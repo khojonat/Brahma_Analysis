@@ -66,12 +66,15 @@ def load_data(path_to_output,run,outputlist,redshifts,Property1,Property2,part_t
             if Lbol[0]:
                 
                 # Selecting only the particle type that we're interested in
-                Groupdata=GroupProp1[:,part_type].astype(int) * conversion1 * e_r * Lbolconv * c**2
+                # Converting to datatype double, otherwise we will overflow
+                Groupdata=GroupProp1[:,part_type].astype(np.double) * conversion1 * e_r * Lbolconv * c**2
                 BoxProp1.append(Groupdata)
                 BoxProp2.append(GroupProp2*conversion2)
                 Boxoutputz.append(output_redshift)
                 
             elif Lbol[1]:
+                
+                GroupProp2 = GroupProp2.astype(np.double)
                 Groupdata=GroupProp1[:,part_type] * conversion1
                 BoxProp1.append(Groupdata)
                 BoxProp2.append(GroupProp2 * conversion2 * e_r * Lbolconv * c**2)
@@ -243,7 +246,7 @@ def plot_brahma(AllBoxMeans,AllBoxStdDevs,XPoints,redshifts,legend_names,axislab
 
     # f.legend(fontsize = 12)
     f.supxlabel('{}'.format(axislabels[0]),fontsize=label_font_size)
-    f.supylabel('{}'.format(axislabels[1]),fontsize=label_font_size)
+    f.supylabel('{}'.format(axislabels[1]),fontsize=label_font_size,x=0)
 
     plt.subplots_adjust(wspace=0.05)
     plt.tight_layout()
