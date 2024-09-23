@@ -13,7 +13,7 @@ Outputlist: Simulation boxes you want to analyze
 redshifts: Redshifts you want to look at 
 Property1, Property2: the particle properties to load
 part_type: Type of particle to analyze (dark matter=0, gas=1, star=4, black hole=5)
-conversion: Conversion from internal units to physical units
+conversion1,conversion2: Conversion from internal units to physical units for properties 1 and 2 respectively
 
 Outputs:
 
@@ -24,8 +24,9 @@ limits: the minimum and maximum values of Property1 (assumed to be x axis) acros
 The limits will be useful for binning to make mean trends
 '''
 
-
-def load_data(path_to_output,run,outputlist,redshifts,Property1,Property2,part_type,conversion=1e10):
+# Defaults for the conversions are 1e10*h, where h is 0.6774, to convert to Solar Masses
+def load_data(path_to_output,run,outputlist,redshifts,Property1,Property2,part_type,
+              conversion1=1e10*0.6774,conversion2=1e10*0.6774):
 
     basePaths = []
     for output in outputlist:
@@ -50,23 +51,25 @@ def load_data(path_to_output,run,outputlist,redshifts,Property1,Property2,part_t
 
         for z in redshifts:
 
-            #Reading Prop1 for each type, dark matter=0, gas=1, star=4, black hole=5
+            #Reading Prop1 for each type, dark matter=0, gas=1, star=4, black hole=5 into an np.array
             GroupProp1,output_redshift=arepo_package.get_group_property(basePath,Property1,z,postprocessed=1)
 
-            #Reading Prop2 of the halo
+            #Reading Prop2 of the halo into an np.array
             GroupProp2,output_redshift=arepo_package.get_group_property(basePath,Property2,z,postprocessed=1)
 
             # Selecting only the particle type that we're interested in
-            Groupdata=GroupProp1[:,part_type]
+            Groupdata=GroupProp1[:,part_type] * conversion1
             BoxProp1.append(Groupdata)
-            BoxProp2.append(GroupProp2)
+            BoxProp2.append(GroupProp2*conversion2)
             Boxoutputz.append(output_redshift)
 
             # Nonzero ids for our properties
             nonzero1id = set(np.nonzero(Groupdata)[0])
             nonzero2id = set(np.nonzero(GroupProp2)[0])
-            Boxminx.append(np.min( np.log10(np.array(Groupdata[list(nonzero1id & nonzero2id)])*conversion) ) )
-            Boxmaxx.append(np.max( np.log10(np.array(Groupdata[list(nonzero1id & nonzero2id)])*conversion) ) )
+            
+            # Finding these max and min x are going to help us set our x and y lims for plotting
+            Boxminx.append(np.min( np.log10(np.array(Groupdata[list(nonzero1id & nonzero2id)]) ) ) )
+            Boxmaxx.append(np.max( np.log10(np.array(Groupdata[list(nonzero1id & nonzero2id)]) ) ) )
 
         Prop1list.append(BoxProp1)
         Prop2list.append(BoxProp2)
@@ -93,7 +96,6 @@ Prop1list,Prop2list: Lists of lists of properties you specified to pull
 redshifts: Redshifts you want to look at 
 limits: limits output from load_data, log10 of x axis min and max values
 bins: Number of bins you want along your x axis
-conversion: Conversion from internal units to physical units
 
 Outputs:
 
@@ -102,7 +104,7 @@ AllBoxStdDevs: A numoy array of the std dev of y values for each redshift, for e
 XPoints: Points along the x axis to plot your average y values
 '''
 
-def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int,conversion=1e10):
+def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
     AllBoxMeans = []
     AllBoxStdDevs = []
@@ -123,6 +125,7 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int,conversion=1e10):
         high = math.ceil(limits[1])
         # Add a manual shift of i in log scale to the bins to prevent overlap
         bins = np.log10((i+1)*np.logspace(low,high,num=numbins))
+        
         # Add the bin average to serve as x values when plotting; same for all z's
         Xpoints.append(np.array([np.mean([bins[n],bins[n+1]]) for n in range(0,len(bins)-1)]))
 
@@ -137,11 +140,12 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int,conversion=1e10):
             for iii in range(len(bins)-1):
 
                 # Store the ids of the Property1 to calculate the mean and std.dev of Property2
-                ids = np.where(np.logical_and(np.log10(Prop1list[i][ii]*conversion)>=bins[iii],
-                                          np.log10(Prop1list[i][ii]*conversion)<=bins[iii+1]))[0]
-
-                ZMeans.append(np.mean(np.log10(Prop2list[i][ii][ids][np.nonzero(Prop2list[i][ii][ids])]*1e10)))
-                ZStdDevs.append(np.std(np.log10(Prop2list[i][ii][ids][np.nonzero(Prop2list[i][ii][ids])]*1e10)))
+                ids = np.where(np.logical_and(np.log10(Prop1list[i][ii])>=bins[iii],
+                                          np.log10(Prop1list[i][ii])<=bins[iii+1]))[0]
+                
+                Vals = Prop2list[i][ii][ids][np.nonzero(Prop2list[i][ii][ids])]
+                ZMeans.append(np.mean(np.log10(Vals)))
+                ZStdDevs.append(np.std(np.log10(Vals)))
                 Z_ids.append(ids)
 
             BoxMeans.append(ZMeans)
@@ -211,7 +215,6 @@ def plot_brahma(AllBoxMeans,AllBoxStdDevs,XPoints,redshifts,legend_names,axislab
 
         ax.grid(alpha = 0.5)
         ax.tick_params(labelsize=tick_size)
-        # ax.set_ylim(4,9) # Maybe don't need to do this since the plots should be sharing y axes?
         ax.set_xlim(np.min(XPoints)-0.5,np.max(XPoints)+0.5)
         ax.set_title('Z={}'.format(redshifts[n]),size = 25)
         n+=1
