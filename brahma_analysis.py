@@ -14,6 +14,7 @@ redshifts: Redshifts you want to look at
 Property1, Property2: the particle properties to load
 part_type: Type of particle to analyze (dark matter=0, gas=1, star=4, black hole=5)
 conversion1,conversion2: Conversion from internal units to physical units for properties 1 and 2 respectively
+Lbol: Whether we want to convert to Bolometric Luminosity. This only applied if reading in BH Mdot
 
 Outputs:
 
@@ -26,7 +27,7 @@ The limits will be useful for binning to make mean trends
 
 # Defaults for the conversions are 1e10*h, where h is 0.6774, to convert to Solar Masses
 def load_data(path_to_output,run,outputlist,redshifts,Property1,Property2,part_type,
-              conversion1=1e10*0.6774,conversion2=1e10*0.6774):
+              conversion1=1e10*0.6774,conversion2=1e10*0.6774,Lbol=[False,False]):
 
     basePaths = []
     for output in outputlist:
@@ -39,6 +40,11 @@ def load_data(path_to_output,run,outputlist,redshifts,Property1,Property2,part_t
     outputz_list = []
     minx = []
     maxx = []
+    
+    # Some constants to be used later if converting to Lbol: Lbol = e_r * Mdot * c^2
+    e_r = 0.2 # Radiative efficiency assumed for BH accretion
+    c = 3e10 # cm/s
+    Lbolconv = 6.3e16 # From Mdot/Gyr*(cm/s)^2 to erg/s
 
     for basePath in basePaths:
     
@@ -56,12 +62,28 @@ def load_data(path_to_output,run,outputlist,redshifts,Property1,Property2,part_t
 
             #Reading Prop2 of the halo into an np.array
             GroupProp2,output_redshift=arepo_package.get_group_property(basePath,Property2,z,postprocessed=1)
+            
+            if Lbol[0]:
+                
+                # Selecting only the particle type that we're interested in
+                Groupdata=GroupProp1[:,part_type].astype(int) * conversion1 * e_r * Lbolconv * c**2
+                BoxProp1.append(Groupdata)
+                BoxProp2.append(GroupProp2*conversion2)
+                Boxoutputz.append(output_redshift)
+                
+            elif Lbol[1]:
+                Groupdata=GroupProp1[:,part_type] * conversion1
+                BoxProp1.append(Groupdata)
+                BoxProp2.append(GroupProp2 * conversion2 * e_r * Lbolconv * c**2)
+                Boxoutputz.append(output_redshift)
+                
+            else:
+                
+                Groupdata=GroupProp1[:,part_type] * conversion1
+                BoxProp1.append(Groupdata)
+                BoxProp2.append(GroupProp2*conversion2)
+                Boxoutputz.append(output_redshift)
 
-            # Selecting only the particle type that we're interested in
-            Groupdata=GroupProp1[:,part_type] * conversion1
-            BoxProp1.append(Groupdata)
-            BoxProp2.append(GroupProp2*conversion2)
-            Boxoutputz.append(output_redshift)
 
             # Nonzero ids for our properties
             nonzero1id = set(np.nonzero(Groupdata)[0])
