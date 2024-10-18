@@ -1,7 +1,13 @@
+import sys
+import os
+sys.path.append('/home/yja6qa/arepo_package')
+
 import numpy as np
 import arepo_package
 import math
 import matplotlib.pyplot as plt
+import illustris_python as il
+import pickle
 
 '''
 load_data is a function designed to load in BRAHMA data and store the desired data in a list of lists (of lists).
@@ -9,6 +15,8 @@ The lists are stacked according to simulation box and redshift.
 
 Inputs:
 
+path_to_output: Path to run
+run: Name of simulation runs
 Outputlist: Simulation boxes you want to analyze
 redshifts: Redshifts you want to look at 
 Property1, Property2: the particle properties to load
@@ -225,15 +233,11 @@ def plot_brahma(AllBoxMeans,AllBoxStdDevs,XPoints,redshifts,legend_names,axislab
             ids = np.logical_and(~np.isnan(AllBoxMeans[i,ii,:]),~np.isinf(AllBoxMeans[i,ii,:]))
         
             if ii == 0:
-            
                 # There is probably a better solution to this, but I don't want to duplicate labels
                 axes[ii].errorbar(XPoints[i][ids],AllBoxMeans[i,ii,:][ids],
                                   yerr = AllBoxStdDevs[i,ii,:][ids],label=legend_names[i])
-            
             else:
-            
                 axes[ii].errorbar(XPoints[i][ids],AllBoxMeans[i,ii,:][ids],yerr = AllBoxStdDevs[i,ii,:][ids])
-
     n = 0
     
     for ax in axes.flat:
@@ -256,3 +260,241 @@ def plot_brahma(AllBoxMeans,AllBoxStdDevs,XPoints,redshifts,legend_names,axislab
         
     return(f,axes)
 
+
+
+
+'''
+get_group_particle_data is designed to grab some desired property of a subhalo of a 
+specified index. Only subhalos with more than 100 stars are considered.
+
+Inputs:
+
+basePath: Path to data file
+desired_redshift: Redshifts you want to look at 
+p_type: Type of particle to analyze (dark matter=0, gas=1, star=4, black hole=5)
+desired_index: Index of the subhalo
+particle_property: Property to grab: https://www.tng-project.org/data/docs/specifications/#sec2b
+
+Outputs:
+
+Prop_subhalo: Desired property of the subhalo specified
+Prop_group: Desired property for the group containing the specified subhalo
+output_redshift: The actual redshift of the snapshots taken from BRAHMA
+'''
+
+def get_group_particle_data(basePath,desired_redshift,p_type,desired_index,particle_property):
+
+    #----------------Get the subhalo catalog and select only those subhalos that have enough stars
+    SubhaloLenType,o = arepo_package.get_subhalo_property(basePath,'SubhaloLenType',desired_redshift,postprocessed=1)
+    SubhaloSMLen = SubhaloLenType[:,p_type]
+    SubhaloIndices = np.arange(0,len(SubhaloSMLen))
+    mask= SubhaloSMLen>100
+    SubhaloIndicesWithStars = SubhaloIndices[mask]
+
+    #---------------Assign the true index of the subhalo to be selected 
+    ActualSubhaloIndex = SubhaloIndicesWithStars[desired_index]
+
+    #---------------Retrieve the desired property of the subhalo and the parent group
+    Prop_subhalo,Prop_group,output_redshift=arepo_package.get_particle_property_within_postprocessed_groups(basePath,particle_property,p_type,desired_redshift,ActualSubhaloIndex,store_all_offsets=1,group_type='subhalo')
+    
+    return(Prop_subhalo,Prop_group,output_redshift)
+
+
+
+
+
+'''
+M_Sigma uses get_group_particle_data to read in the central MBH mass and stellar subhalo 
+velocity dispersion for specified subhalo indices at a specified redshift. The central
+MBH is assumed to be the most massive BH in the subhalo
+
+Inputs:
+basePath: Path to data file
+desired_redshift: Redshifts you want to look at 
+desired_indices: Indices of subhalos you want to look at
+file_format: Format of file being pointed to by basePath
+
+Outputs:
+M: Array of central massive black hole masses in the specified subhalo, units: 10^10 Msun/h
+MStars: Array of stellar masses for each subhalo, units: 10^10 Msun/h
+Sigma: 3D Velocity dispersion of the stars in the specified subhalo, units: km/s
+VelsMag: The magnitude of each star's velocity for each subhalo, units: km/s
+Velocities: The 3D velocity components of each star for each subhalo, units: km/s
+NStars: The number of stars in each subhalo
+BH_Progs: The number of progenitor BHs for each central BH (or number of past mergers)
+IgnoredBhs: The total number of BHs in subhalos that are not represented in the M array
+'''
+
+def M_Sigma(basePath,desired_redshift,desired_indices,file_format='fof_subfind',h = 0.6774):
+    
+    M = []
+    MStars=[]
+    Sigma = []
+    VelsMag = []
+    Velocities = []
+    NStars = []
+    BH_Progs=[]
+    IgnoredBhs = 0
+    
+    SubhaloLenType,o = arepo_package.get_subhalo_property(basePath,'SubhaloLenType',desired_redshift,postprocessed=1)
+    SubhaloBHLen = SubhaloLenType[:,5]
+    SubhaloStarsLen = SubhaloLenType[:,4]
+    SubhaloIndices = np.arange(0,len(SubhaloBHLen))
+    mask = np.logical_and(SubhaloBHLen>0,SubhaloStarsLen>0)  # Only subhalos with a BH and with stars
+    SubhaloIndicesWithStars = SubhaloIndices[mask]
+    
+    # From get_particle_property_within_postprocessed_groups
+    output_redshift,output_snapshot=arepo_package.desired_redshift_to_output_redshift(basePath,
+                                                                        desired_redshift,list_all=False,file_format=file_format)
+    requested_property1=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=4,fields='Velocities')
+    requested_property2=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=4,fields='Masses')
+    requested_property3=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=5,fields='Masses')
+    requested_property4=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=5,fields='BH_Progs')
+    
+    # Scale factor calculation
+    a = 1/(1+output_redshift)
+    
+    for index in desired_indices:
+        
+        ActualSubhaloIndex = SubhaloIndicesWithStars[index]
+        Vel_subhalo,Vel_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'Velocities',4,output_redshift,ActualSubhaloIndex,requested_property1,store_all_offsets=1,group_type='subhalo')
+        MStars_subhalo,Mstars_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',4,output_redshift,ActualSubhaloIndex,requested_property2,store_all_offsets=1,group_type='subhalo')
+        BHMasses_subhalo,BHMasses_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',5,desired_redshift,ActualSubhaloIndex,requested_property3,store_all_offsets=1,group_type='subhalo')
+        BHProgs_subhalo,BHProgs_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'BH_Progs',5,desired_redshift,ActualSubhaloIndex,requested_property4,store_all_offsets=1,group_type='subhalo')
+        
+        # Velocity calculations
+        N = len(Vel_subhalo) # number of stars
+        Vel_subhalo=np.array(Vel_subhalo)/np.sqrt(a) # New units: km/s
+        VelocityMags = np.linalg.norm(Vel_subhalo, axis=1) # Calculate velocity magnitudes
+        mu = np.mean(VelocityMags) # Average stellar velocity
+        Sigmasubhalo = np.sqrt(np.sum((VelocityMags - mu) ** 2) / N)  # Calculate velocity dispersion
+       
+        M.append(np.max(BHMasses_subhalo)*1e10*h)
+        MStars.append(MStars_subhalo*1e10*h)
+        Sigma.append(Sigmasubhalo)
+        VelsMag.append(VelocityMags)
+        Velocities.append(Vel_subhalo)
+        NStars.append(N)
+        BH_Progs.append(BHProgs_subhalo[0])
+        IgnoredBhs += len(BHMasses_subhalo)-1
+    
+    return(M,MStars,Sigma,VelsMag,Velocities,NStars,BH_Progs,IgnoredBhs)
+
+
+
+'''
+This function was directly adapted from Aklant Bohmwick's get_particle_property_within_postprocessed_groups function from his version of arepo_package. This adapted version takes requested_property as an input so as to avoid loading in all the data every time the property of some halo is desired. 
+'''
+
+def get_particle_property_within_postprocessed_groups_adj(output_path,particle_property,p_type,desired_redshift,subhalo_index,requested_property,group_type='groups',list_all=True,store_all_offsets=1, public_simulation=0,file_format='fof_subfind'):
+    output_redshift,output_snapshot=arepo_package.desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False,file_format=file_format)
+#     if (public_simulation==0):
+#         requested_property=il.snapshot.loadSubset_groupordered(output_path,output_snapshot,p_type,fields=particle_property)
+
+    if (group_type=='groups'):
+        if(public_simulation==0):              
+            group_lengths,output_redshift=(arepo_package.get_group_property(output_path,'GroupLenType', desired_redshift,list_all=False,file_format=file_format,stack_style='vstack',postprocessed=1))
+            group_lengths=group_lengths[:,p_type] 
+            if (store_all_offsets==0):
+                    group_offsets=np.array([sum(group_lengths[0:i]) for i in range(0,subhalo_index+1)]) 
+            else:
+                if (os.path.exists(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot))):
+                    group_offsets=np.load(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot),allow_pickle = True)
+                    print("offsets were already there")
+                else:
+                    group_offsets=np.array([sum(group_lengths[0:i]) for i in range(0,len(group_lengths))])
+                    np.save(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot),group_offsets)
+                    print("Storing the offsets")
+            group_particles=requested_property[group_offsets[subhalo_index]:group_offsets[subhalo_index]+group_lengths[subhalo_index]]
+        else:
+            group_particles=il.snapshot.loadHalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
+        return group_particles,output_redshift
+
+    elif (group_type=='subhalo'):              
+        if(public_simulation==0):
+            group_lengths,output_redshift=(arepo_package.get_group_property(output_path,'GroupLenType', desired_redshift,postprocessed=1))
+            group_lengths=group_lengths[:,p_type] 
+            if (store_all_offsets==0):
+                    group_offsets=np.array([sum(group_lengths[0:i]) for i in range(0,subhalo_index+1)]) 
+            else:
+                if (os.path.exists(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot))):
+                    group_offsets=np.load(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot),allow_pickle = True)
+                    # print("offsets were already there")
+                else:
+                    group_offsets=np.array([sum(group_lengths[0:i]) for i in range(0,len(group_lengths))])
+                    np.save(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot),group_offsets)
+                    print("Storing the offsets")        
+            subhalo_lengths,output_redshift=(arepo_package.get_subhalo_property(output_path,'SubhaloLenType', desired_redshift, postprocessed=1))
+            subhalo_lengths=subhalo_lengths[:,p_type] 
+            subhalo_indices=np.arange(0,len(subhalo_lengths))
+            subhalo_group_number,output_redshift=(arepo_package.get_subhalo_property(output_path,'SubhaloGrNr', desired_redshift,list_all=False,postprocessed=1));
+            desired_group_number=subhalo_group_number[subhalo_index]  
+            subhalo_lengths=subhalo_lengths[subhalo_group_number==desired_group_number]
+            subhalo_offsets=np.array([sum(subhalo_lengths[0:i]) for i in range(0,len(subhalo_lengths))])
+            mask=subhalo_group_number==desired_group_number
+            #print(len(mask)),mask
+            subhalo_indices=subhalo_indices[mask]  
+            subhalo_final_indices=np.arange(0,len(subhalo_indices))
+            group_particles=requested_property[group_offsets[desired_group_number]:group_offsets[desired_group_number]+group_lengths[desired_group_number]]   
+        
+            del requested_property
+
+            #subhalo_indices=subhalo_indices[subhalo_group_number==desired_group_number]
+            final_index=(subhalo_final_indices[subhalo_indices==subhalo_index])[0]
+        
+            subhalo_particles=group_particles[subhalo_offsets[final_index]:subhalo_offsets[final_index]+subhalo_lengths[final_index]]
+      
+            #return subhalo_particles,group_particles,output_redshift     
+        else:
+            subhalo_group_number,output_redshift=(arepo_package.get_subhalo_property(output_path,'SubhaloGrNr', desired_redshift,list_all=False,postprocessed=1));
+            desired_group_number=subhalo_group_number[subhalo_index]
+            group_particles=il.snapshot.loadHalo(output_path, output_snapshot, desired_group_number, p_type, fields=particle_property)
+            subhalo_particles=il.snapshot.loadSubhalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
+        return subhalo_particles,group_particles,output_redshift
+    else:
+        print("Error:Unidentified group type")
+        
+        
+
+'''
+Write2File is a function designed to take the output of M_Sigma and write the data to a pickle file
+The pickle file format was chosen because of the inhomogeneous structure of the data, since each subhalo
+has a different number of stars
+
+Inputs:
+
+See outputs of M_Sigma function
+fname: Name of file to dump data to
+
+Outputs:
+
+Writes data to file named 'fname.pickle'
+'''
+
+def Write2File(M,MStars,Sigma,VelsMag,Velocities,NStars,BH_Progs,IgnoredBhs,fname='BrahmaData'):
+    
+    Data=[M,MStars,Sigma,VelsMag,Velocities,NStars,BH_Progs,IgnoredBhs]
+    
+    with open(fname+'.pickle', 'wb') as handle:
+        pickle.dump(Data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        
+        
+'''
+ReadBrahmaData is a function designed to read in the data dumped by Write2File
+
+Inputs:
+
+fname: Name of file to read data from
+
+Outputs:
+
+Data: List of data from M_Sigma function in the following order: [M,Sigma,VelsMag,Velocities,Nstars,IgnoredBhs]
+See M_Sigma for details
+'''
+
+def ReadBrahmaData(fname='BrahmaData'):
+    with open(fname+'.pickle', 'rb') as handle:
+        Data = pickle.load(handle)
+        
+    return(Data)
