@@ -100,19 +100,27 @@ for index in desired_indices:
     VelocityMagCM = np.linalg.norm(Vel_CM, axis=1)
     mu_BH = np.mean(Vel_BH,axis=0) # Average 3D stellar velocity for this subhalo
     mu_CM = np.mean(Vel_CM,axis=0)
-    Sigma_BH = np.sqrt(np.sum(np.linalg.norm(Vel_BH - mu_BH,axis=1) ** 2) / N)  # Calculate sigma from subhalo velocity
-    Sigma_CM = np.sqrt(np.sum(np.linalg.norm(Vel_CM - mu_CM,axis=1) ** 2) / N) # Calculate sigma from BH velocity
-       
+    Mstars_total = np.sum(MStars_subhalo)
+    
+    # Here we weight the sigma calculation by stellar mass
+    BHDiffSquared=MStars_subhalo[:, np.newaxis]*np.array((Vel_BH - mu_BH)** 2)
+    CMDiffSquared=MStars_subhalo[:, np.newaxis]*np.array((Vel_CM - mu_CM)** 2)
+
+    Sigma_BH = np.sqrt(np.sum(BHDiffSquared,axis=0) / N*Mstars_total)  # Calculate sigma from subhalo velocity
+    Sigma_CM = np.sqrt(np.sum(CMDiffSquared,axis=0) / N*Mstars_total)  # Calculate sigma from BH velocity
+    # print(Sigma_BH,Sigma_CM)
+    
     M.append(np.max(BHMasses_subhalo)*1e10*h)
     MStars.append(MStars_subhalo*1e10*h)
     ZStars.append(SubhaloZStars[index])
     SFR.append(SubhaloSFR[index])
-    SigmaBHs.append(Sigma_BH)
+    SigmaBHs.append(Sigma_BH) 
     SigmaCOM.append(Sigma_CM)
     VelsMagBHs.append(VelocityMagBH)
     VelsMagCOMs.append(VelocityMagCM)
     VelBHs.append(Vel_BH)
     VelCOMs.append(Vel_CM)
+    
     
     NStars.append(N)
     BH_Progs.append(BHProgs_subhalo[0])
