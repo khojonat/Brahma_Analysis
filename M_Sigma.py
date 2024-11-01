@@ -20,19 +20,20 @@ import pickle
 # Path to simulation data
 path_to_output='/standard/torrey-group/BRAHMA/L12p5n512' # this is the folder containing the simulation run
 run='/AREPO/' # name of the simulation runs
-output='output_ratio10_SFMFGM5_seed5.00_bFOF/'
+output='output_ratio10_SFMFGM5_seed5.00_bFOF_LW10_spin_rich/'
 basePath = path_to_output+run+output
 
 file_format='fof_subfind'
 
-desired_redshift=0
+desired_redshift=5
+h = 0.6774 # hubble constant 
 
 M = []
 MStars=[]
 ZStars=[]
 SFR=[]
-SigmaBHs = []
-SigmaCOM = []
+Sigmas = []
+# SigmaCOM = []
 VelsMagBHs = []
 VelsMagCOMs = []
 VelBHs = []
@@ -83,39 +84,35 @@ a = 1/(1+output_redshift)
 for index in desired_indices:
         
     ActualSubhaloIndex = SubhaloIndicesWithStars[index]
-    Vel_subhalo,Vel_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'Velocities',4,output_redshift,ActualSubhaloIndex,requested_property1,store_all_offsets=1,group_type='subhalo')
-    MStars_subhalo,Mstars_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',4,output_redshift,ActualSubhaloIndex,requested_property2,store_all_offsets=1,group_type='subhalo')
-    BHMasses_subhalo,BHMasses_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',5,desired_redshift,ActualSubhaloIndex,requested_property3,store_all_offsets=1,group_type='subhalo')
-    BHProgs_subhalo,BHProgs_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'BH_Progs',5,desired_redshift,ActualSubhaloIndex,requested_property4,store_all_offsets=1,group_type='subhalo')
-    BHID_subhalo,BHID_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'ParticleIDs',5,desired_redshift,ActualSubhaloIndex,requested_property5,store_all_offsets=1,group_type='subhalo')
-    BHMdot_subhalo,BHMdot_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'BH_Mdot',5,desired_redshift,ActualSubhaloIndex,requested_property6,store_all_offsets=1,group_type='subhalo')
-    BH_vel_subhalo,BH_vel_subhalo_group,output_redshift=get_particle_property_within_postprocessed_groups_adj(basePath,'Velocities',5,desired_redshift,ActualSubhaloIndex,requested_property7,store_all_offsets=1,group_type='subhalo')
+    Vel_subhalo,Vel_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'Velocities',4,output_redshift,ActualSubhaloIndex,requested_property1,store_all_offsets=1,group_type='subhalo')
+    MStars_subhalo,Mstars_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',4,output_redshift,ActualSubhaloIndex,requested_property2,store_all_offsets=1,group_type='subhalo')
+    BHMasses_subhalo,BHMasses_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',5,desired_redshift,ActualSubhaloIndex,requested_property3,store_all_offsets=1,group_type='subhalo')
+    BHProgs_subhalo,BHProgs_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'BH_Progs',5,desired_redshift,ActualSubhaloIndex,requested_property4,store_all_offsets=1,group_type='subhalo')
+    BHID_subhalo,BHID_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'ParticleIDs',5,desired_redshift,ActualSubhaloIndex,requested_property5,store_all_offsets=1,group_type='subhalo')
+    BHMdot_subhalo,BHMdot_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'BH_Mdot',5,desired_redshift,ActualSubhaloIndex,requested_property6,store_all_offsets=1,group_type='subhalo')
+    BH_vel_subhalo,BH_vel_subhalo_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'Velocities',5,desired_redshift,ActualSubhaloIndex,requested_property7,store_all_offsets=1,group_type='subhalo')
     
         
     # Velocity calculations
     N = len(Vel_subhalo) # number of stars
     Vel_BH = np.array(Vel_subhalo)/np.sqrt(a) - BH_vel_subhalo[0]/np.sqrt(a) # New units: km/s
-    Vel_CM = np.array(Vel_subhalo)/np.sqrt(a) - SubhaloCMvel[index]   # New units: km/s
+    Vel_CM = np.array(Vel_subhalo)/np.sqrt(a) - SubhaloCMvel[ActualSubhaloIndex]   # New units: km/s
+        
     VelocityMagBH = np.linalg.norm(Vel_BH, axis=1) # Calculate velocity magnitudes
     VelocityMagCM = np.linalg.norm(Vel_CM, axis=1)
     mu_BH = np.mean(Vel_BH,axis=0) # Average 3D stellar velocity for this subhalo
-    mu_CM = np.mean(Vel_CM,axis=0)
     Mstars_total = np.sum(MStars_subhalo)
     
     # Here we weight the sigma calculation by stellar mass
     BHDiffSquared=MStars_subhalo[:, np.newaxis]*np.array((Vel_BH - mu_BH)** 2)
-    CMDiffSquared=MStars_subhalo[:, np.newaxis]*np.array((Vel_CM - mu_CM)** 2)
 
-    Sigma_BH = np.sqrt(np.sum(BHDiffSquared,axis=0) / N*Mstars_total)  # Calculate sigma from subhalo velocity
-    Sigma_CM = np.sqrt(np.sum(CMDiffSquared,axis=0) / N*Mstars_total)  # Calculate sigma from BH velocity
-    # print(Sigma_BH,Sigma_CM)
+    Sigma = np.sqrt(np.sum(BHDiffSquared,axis=0) / Mstars_total)  # Calculate sigma from subhalo velocity
     
     M.append(np.max(BHMasses_subhalo)*1e10*h)
     MStars.append(MStars_subhalo*1e10*h)
     ZStars.append(SubhaloZStars[index])
     SFR.append(SubhaloSFR[index])
-    SigmaBHs.append(Sigma_BH) 
-    SigmaCOM.append(Sigma_CM)
+    Sigmas.append(Sigma) 
     VelsMagBHs.append(VelocityMagBH)
     VelsMagCOMs.append(VelocityMagCM)
     VelBHs.append(Vel_BH)
@@ -131,5 +128,4 @@ for index in desired_indices:
     IgnoredBhs += len(BHMasses_subhalo)-1
     
     
-brahma_analysis.Write2File(M,MStars,ZStars,SFR,SigmaBHs,SigmaCOM,VelsMagBHs,VelsMagCOMs,VelBHs,VelCOMs,NStars,
-                           BH_Progs,BH_Mdots,BHIDs,BHArrayIndex,ZGas,IgnoredBhs,SubhaloArrayIndex,fname='BrahmaData')
+brahma_analysis.Write2File(M,MStars,ZStars,SFR,Sigmas,VelsMagBHs,VelsMagCOMs,VelBHs,VelCOMs,NStars,BH_Progs,BH_Mdots,BHIDs,BHArrayIndex,ZGas,IgnoredBhs,SubhaloArrayIndex,fname='output_ratio10_SFMFGM5_seed5.00_bFOF_LW10_spin_rich_z5')
