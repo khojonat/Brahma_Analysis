@@ -20,14 +20,15 @@ import pickle
 # Path to simulation data
 path_to_output='/standard/torrey-group/BRAHMA/L12p5n512' # this is the folder containing the simulation run
 run='/AREPO/' # name of the simulation runs
-output='output_ratio10_SFMFGM5_seed5.00_bFOF/'
-basePath = path_to_output+run+output
+output='output_ratio10_SFMFGM5_seed5.00_bFOF_LW10/' # Name of the box we want to load data from
+basePath = path_to_output+run+output # Combining paths to read data in 
 
 file_format='fof_subfind'
 
 desired_redshift=0
 h = 0.6774 # hubble constant 
 
+# Initialize all of our data as empty lists
 M = []
 MStarsBH=[]
 MStars=[]
@@ -45,7 +46,7 @@ BH_Mdots=[]
 BHIDs=[]
 ZGas=[]
 BHArrayIndex=[]
-IgnoredBhs = 0
+IgnoredBhs = 0 # Number of black holes in subhalos that our code ignores
     
 SubhaloLenType,o = arepo_package.get_subhalo_property(basePath,'SubhaloLenType',desired_redshift,postprocessed=1)
 SubhaloBHLen = SubhaloLenType[:,5]
@@ -74,6 +75,9 @@ requested_property5=il.snapshot.loadSubset_groupordered(basePath,output_snapshot
 requested_property6=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=5,fields='BH_Mdot')
 requested_property7=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=5,fields='Velocities')
 
+# Grabbing stellar age; negative ages are wind particles that should not be included in sigma calculation
+Age=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=4,fields='GFM_StellarFormationTime')
+
 # Subhalo properties
 SubhaloSFR,o = arepo_package.get_subhalo_property(basePath,'SubhaloSFR',desired_redshift,postprocessed=1)
 SubhaloZStars,o = arepo_package.get_subhalo_property(basePath,'SubhaloStarMetallicity',desired_redshift,postprocessed=1)
@@ -81,7 +85,7 @@ SubhaloZGas,o = arepo_package.get_subhalo_property(basePath,'SubhaloGasMetallici
 SubhaloCMvel,o = arepo_package.get_subhalo_property(basePath,'SubhaloVel',desired_redshift,postprocessed=1)
 
     
-# Scale factor calculation
+# Scale factor calculation for unit corrections
 a = 1/(1+output_redshift)
     
 for index in desired_indices:
@@ -89,6 +93,12 @@ for index in desired_indices:
     ActualSubhaloIndex = SubhaloIndicesWithStars[index]
     Vel_subhalo,Vel_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'Velocities',4,output_redshift,ActualSubhaloIndex,requested_property1,store_all_offsets=1,group_type='subhalo')
     MStars_subhalo,Mstars_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',4,output_redshift,ActualSubhaloIndex,requested_property2,store_all_offsets=1,group_type='subhalo')
+    Age_subhalo,Age_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'GFM_StellarFormationTime',4,output_redshift,ActualSubhaloIndex,Age,store_all_offsets=1,group_type='subhalo')
+    
+    # Removing wind particles
+    mask = Age_subhalo > 0
+    Vel_subhalo = Vel_subhalo[mask]
+    MStars_subhalo = MStars_subhalo[mask]
     
     Mstars_total = np.sum(MStars_subhalo)
     
@@ -115,7 +125,7 @@ for index in desired_indices:
     ZGas.append(SubhaloZGas[ActualSubhaloIndex])
     
     
-    # If the subhalo also meets the BH criteria
+    # If the subhalo more than 10 stars but also has a BH
     if ActualSubhaloIndex in SubhaloIndicesWithBH:
         BHMasses_subhalo,BHMasses_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'Masses',5,desired_redshift,ActualSubhaloIndex,requested_property3,store_all_offsets=1,group_type='subhalo')
         BHProgs_subhalo,BHProgs_group,output_redshift=brahma_analysis.get_particle_property_within_postprocessed_groups_adj(basePath,'BH_Progs',5,desired_redshift,ActualSubhaloIndex,requested_property4,store_all_offsets=1,group_type='subhalo')
@@ -142,4 +152,4 @@ for index in desired_indices:
         BHArrayIndex.append(np.where(AllBHIDs[0] == BHID_subhalo[0])[0][0]) # Store BH array index
         IgnoredBhs += len(BHMasses_subhalo)-1
     
-brahma_analysis.Write2File(M,MStarsBH,MStars,ZStars,SFR,SigmasBH,SigmaStars,VelsMagBHs,VelsMagCOMs,VelBHs,VelCOMs,NStars,BH_Progs,BH_Mdots,BHIDs,BHArrayIndex,ZGas,IgnoredBhs,SubhaloIndicesWithStars,SubhaloIndicesWithBH,fname='Brahma_Data/output_ratio10_SFMFGM5_seed5.00_bFOF_z0')
+brahma_analysis.Write2File(M,MStarsBH,MStars,ZStars,SFR,SigmasBH,SigmaStars,VelsMagBHs,VelsMagCOMs,VelBHs,VelCOMs,NStars,BH_Progs,BH_Mdots,BHIDs,BHArrayIndex,ZGas,IgnoredBhs,SubhaloIndicesWithStars,SubhaloIndicesWithBH,fname='Brahma_Data/output_ratio10_SFMFGM5_seed5.00_bFOF_nowind_z0')
