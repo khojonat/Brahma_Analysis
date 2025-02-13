@@ -7,7 +7,8 @@ import arepo_package
 import math
 import matplotlib.pyplot as plt
 import illustris_python as il
-import pickle
+# import pickle5 as pickle
+import cloudpickle
 
 '''
 load_data is a function designed to load in BRAHMA data and store the desired data in a list of lists (of lists).
@@ -542,9 +543,13 @@ def Write2File(*args,fname='BrahmaData'):
     
     Data=[arg for arg in args]
     
-    with open(fname+'.pickle', 'wb') as handle:
-        pickle.dump(Data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # Originally did this with pickle, then needed pickle5 but couldn't install
+    # with open(fname+'.pickle', 'wb') as handle:
+    #     pickle.dump(Data, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
+    # Now trying with cloudpickle
+    with open(fname+'.pickle', 'wb') as f:
+        cloudpickle.dump(Data, f)
         
         
 '''
@@ -561,8 +566,12 @@ See M_Sigma for details
 '''
 
 def ReadBrahmaData(fname='BrahmaData'):
-    with open(fname+'.pickle', 'rb') as handle:
-        Data = pickle.load(handle)
+    # with open(fname+'.pickle', 'rb') as handle:
+    #     Data = pickle.load(handle)
+        
+    # Trying with cloudpickle: 
+    with open(fname+'.pickle', 'rb') as f:
+        Data = cloudpickle.load(f)
         
     return(Data)
 
@@ -575,7 +584,9 @@ y (M_BH) axis averages and std devs. vs. redshift for fixed values of the x axis
 Inputs:
 
 X_vals: List of values typically on the x axis (like sigma) for each redshift desired
+        Format: [X_vals_z0, X_vals_z1, ... ]
 Y_vals: List of values typically on the y axis (like M_BH) for each redshift desired
+        Format: [Y_vals_z0, Y_vals_z1, ... ]
 fixed_vals: List of values of X_vals that you want to keep constant
 bin_width: Width of bins around fixed_vals to draw from X_vals
 
@@ -588,25 +599,221 @@ stds: List of standard deviations around avgs
 
 def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
     
+    # Avgs and std devs for all fixed x values 
     avgs = []
     stds = []
-
+    
+    # For each fixed value we are interested in
     for i in range(len(fixed_vals)):
-
+        
+        # Avgs and std devs for the current fixed x value 
         sigma_avgs = []
         sigma_stds = []
-
+        
+        # For each redshift in X_vals
         for ii in range(len(X_vals)):
 
             # Fetch indices of values within +/- bin_with of fixed_vals
-            index = np.logical_and(X_vals[ii] > fixed_vals[i]-bin_width,X_vals[ii] < fixed_vals[i]+bin_width)
+            index = np.logical_and(X_vals[ii] > fixed_vals[i]-bin_width, X_vals[ii] < fixed_vals[i]+bin_width)
+            
+            # Calculate avg and std dev for y_vals at (redshift) index ii for the current fixed_val
             avg = np.mean(np.array(Y_vals[ii])[index])
             std = np.std(np.array(Y_vals[ii])[index])
-
+                        
+            # Append to lists
             sigma_avgs.append(avg)
             sigma_stds.append(std)
-
+        
         avgs.append(sigma_avgs)
         stds.append(sigma_stds)
         
     return(avgs,stds)
+
+
+
+'''
+Simple function to calculate the percent growth of a value across
+different redshifts
+
+Inputs:
+array: Array of values at each redshift for each line
+array_index: Index of array parsing through (typically 0, 1, or 2 for 3 different lines)
+redshift_indices: Indices of redshifts to calculate percent growth for. Format: (high_z index,low_z index)
+
+Outputs:
+vals: List of [highzval,lowzval]
+perc_growth: Percent growth from high_z index to low_z index
+'''
+
+def precent_growth(array,array_index,redshift_indices):
+    
+    highzval = array[array_index][redshift_indices[0]]
+    lowzval = array[array_index][redshift_indices[1]]
+    
+    perc_growth = (lowzval - highzval)/highzval
+    
+    vals = [highzval,lowzval]
+    
+    return(vals,perc_growth)
+    
+
+
+
+def Grav_Pot_E(Star_Props, DM_Props, Gas_Props,BH_Props):
+    
+    '''
+    Calculates gravitational potential by summing the contribution
+    from every particle in the halo
+
+    Inputs:
+    Star_Props: Star particle masses, coordinates, and velocities. Masses assumed to be in solar masses, 
+                coordinates in kpc centered on the subhalo center, and velocities in km/s. Assumes wind 
+                particles have been filtered out as well
+    DM_Props:   Dark Matter particle coordinates, assumed to be in kpc centered on the subhalo center
+    Gas_Props:  Gas particle masses and coordinates, assumed to be in solar masses and
+                kpc centered on the subhalo center, respectively
+    BH_Props:   BH particle masses and coordinates, assumed to be in solar masses and
+                kpc centered on the subhalo center, respectively
+
+    Outputs: 
+    Grav_Pot_E: Array of gravitational potential energies for all stars in halo
+
+    '''
+    
+    h = 0.6774
+    G = 4.3e-3 # pc^3 Msun^-1 s^-2
+    
+    M_Star = Star_Props[0] # Msun
+    r_Star = Star_Props[1] # kpc
+    v_Star = Star_Props[2] # km/s
+    
+    M_DM = 7.5e6 # Msun
+    r_DM = np.array(DM_Props) # kpc
+    
+    M_Gas = np.array(Gas_Props[0]) # Msun
+    r_Gas = np.array(Gas_Props[1]) # kpc
+    
+    M_BH = np.array(BH_Props[0]) # Msun
+    r_BH = np.array(BH_Props[1]) # kpc
+    
+    Grav_Pot_E = []
+    
+    # For each star particle, we want to calculate the grav. pot. E
+    for i in range(len(M_Star)):
+        
+        # Magnitude of grav. pot. E.
+        E = 0
+        
+        # Do calculation with each DM particle
+        
+        E += np.sum(G * M_DM * M_Star[i] / np.absolute(np.linalg.norm(r_DM - r_Star[i])))
+            
+        # Do calculation with each gas particle
+        
+        E += np.sum(G * M_Star[i] * M_Gas / np.absolute(np.linalg.norm(r_Star[i] - r_Gas)))
+            
+        # Do calculation with each BH particle
+        
+        E += np.sum(G * M_Star[i] * M_BH / np.absolute(np.linalg.norm(r_Star[i] - r_BH)))
+        
+        Grav_Pot_E.append(E)
+        
+    return(Grav_Pot_E)
+
+def Grav_Pot_E_efficient(Star_Props, DM_Props, Gas_Props, BH_Props):
+    '''
+    Optimized version of the gravitational potential energy calculation written by Chat GPT
+    Requests 4 PiB for the np array??
+    
+    Inputs:
+    Star_Props, DM_Props, Gas_Props, BH_Props (as before)
+    
+    Outputs:
+    Grav_Pot_E: Array of gravitational potential energies for all stars in halo
+    '''
+    
+    h = 0.6774
+    G = 4.3e-3  # pc^3 Msun^-1 s^-2
+    
+    M_Star = Star_Props[0]  # Msun
+    r_Star = Star_Props[1]  # kpc
+    v_Star = Star_Props[2]  # km/s
+    
+    M_DM = 7.5e6  # Msun
+    r_DM = np.array(DM_Props)  # kpc
+    
+    M_Gas = np.array(Gas_Props[0])  # Msun
+    r_Gas = np.array(Gas_Props[1])  # kpc
+    
+    M_BH = np.array(BH_Props[0])  # Msun
+    r_BH = np.array(BH_Props[1])  # kpc
+
+    # Precompute distances
+    r_Star_DM = np.linalg.norm(r_DM - r_Star[:, np.newaxis], axis=2)  # Distances between stars and DM particles
+    r_Star_Gas = np.linalg.norm(r_Gas - r_Star[:, np.newaxis], axis=2)  # Distances between stars and gas particles
+    r_Star_BH = np.linalg.norm(r_BH - r_Star[:, np.newaxis], axis=2)  # Distances between stars and BH particles
+
+    # Avoid division by zero by setting very small distances to a tiny value
+    r_Star_DM[r_Star_DM == 0] = 1e-10
+    r_Star_Gas[r_Star_Gas == 0] = 1e-10
+    r_Star_BH[r_Star_BH == 0] = 1e-10
+
+    # Compute gravitational potential energy for all stars at once
+    Grav_Pot_E_DM = np.sum(G * M_DM * M_Star[:, np.newaxis] / r_Star_DM, axis=1)
+    Grav_Pot_E_Gas = np.sum(G * M_Star[:, np.newaxis] * M_Gas / r_Star_Gas, axis=1)
+    Grav_Pot_E_BH = np.sum(G * M_Star[:, np.newaxis] * M_BH / r_Star_BH, axis=1)
+
+    # Final total gravitational potential energy
+    Grav_Pot_E = Grav_Pot_E_DM + Grav_Pot_E_Gas + Grav_Pot_E_BH
+    
+    return Grav_Pot_E
+
+
+'''
+kinematic_decomp is designed to perform a kinematic decomposition of a galaxy to 
+distinguish between stars that belong to the disk vs. bulge. This is done by 
+calculating the maximum (i.e. circular) (specific) angular momentum of each star 
+given its position, and taking the ratio between its actual angular momentum and 
+the circular angular momentum. The stars with j/jmax > 0.7 are classified as 
+belonging to the disk.
+
+Inputs:
+Star_Props: Star particle masses, coordinates, and velocities. Masses assumed to be in solar masses, 
+            coordinates in kpc centered on the subhalo center, and velocities in km/s. Assumes wind 
+            particles have been filtered out as well
+Grav_Pot_E: Array of gravitational potential energies for all stars in halo
+
+Outputs:
+id_bulge: Indices of stars belonging to the bulge
+id_disk: Indices of stars belonging to the disk
+ratio_bulge: Ratio of stars that have been classified as belonging to the bulge
+'''
+
+
+def kinematic_decomp(Star_Props,Grav_Pot_E):
+    
+    # Delimiter between bulge and disk stars
+    delim = 0.7
+    
+    # Calculating circular velocity 
+    M_Star = Star_Props[0] # Msun
+    r_Star = Star_Props[1] # kpc
+    v_Star = Star_Props[2] # km/s
+    
+    # Calculated via energy
+    v_circ = np.sqrt(Grav_Pot_E/M_Star)
+    
+    # Circular angular momentum at that radius
+    j_circ = np.abs(r_Star)*v_circ
+    
+    j = np.cross(r_Star,v_Star)
+    
+    ratio = j/j_circ
+    
+    id_bulge = ratio < 0.7
+    id_disk = ratio > 0.7
+    
+    ratio_bulge = len(ratio[id_bulge])
+    
+    return(id_bulge,id_disk,ratio_bulge)
+    
