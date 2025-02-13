@@ -154,10 +154,13 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
         BoxStdDevs = []
         Box_ids = []
         
-        low = math.floor(limits[0])
-        high = math.ceil(limits[1])
+        # low = math.floor(limits[0])
+        # high = math.ceil(limits[1])
+        
+        low = limits[0]
+        high = limits[1]
         # Add a manual shift of i in log scale to the bins to prevent overlap
-        bins = np.log10((i+1)*np.logspace(low,high,num=numbins))
+        bins = np.log10(np.logspace(low,high,num=numbins))+i*0.025
         
         # Add the bin average to serve as x values when plotting; same for all z's
         Xpoints.append(np.array([np.mean([bins[n],bins[n+1]]) for n in range(0,len(bins)-1)]))
@@ -194,8 +197,72 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
     return(AllBoxMeans,AllBoxStdDevs,Xpoints)
 
+'''
+Adjusted version of mean_trends to produce bins for each redshift in a box as opposed
+to for each box at a given redshift
+'''
 
+def mean_trends_adj(Prop1list,Prop2list,redshifts,limits,bins:int):
 
+    AllBoxMeans = []
+    AllBoxStdDevs = []
+    Xpoints = []
+    Allids = []
+
+    # I have no idea why this is necessary, but when I don't include this the loop breaks because of the num argument
+    numbins=bins
+
+    # Want to find mean and std dev for each box
+    for i in range(len(Prop1list)):
+
+        BoxMeans = []
+        BoxStdDevs = []
+        Box_ids = []
+        
+        # low = math.floor(limits[0])
+        # high = math.ceil(limits[1])
+        
+        low = limits[0]
+        high = limits[1]
+
+        # For each redshift
+        for ii in range(len(redshifts)):
+            
+            # Add a manual shift of ii+0.5 in log scale to the bins to prevent overlap
+            bins = np.log10(np.logspace(low,high,num=numbins))+ii*0.025 # 0.2 for relations, 0.25 for HMR
+            # print(bins)
+        
+            # Add the bin average to serve as x values when plotting; same for all z's
+            Xpoints.append(np.array([np.mean([bins[n],bins[n+1]]) for n in range(0,len(bins)-1)]))
+
+            ZMeans = []
+            ZStdDevs = []
+            Z_ids = []
+
+            # For each bin we make
+            for iii in range(len(bins)-1):
+
+                # Store the ids of the Property1 to calculate the mean and std.dev of Property2
+                ids = np.where(np.logical_and(np.log10(Prop1list[i][ii])>=bins[iii],
+                                          np.log10(Prop1list[i][ii])<=bins[iii+1]))[0]
+                
+                Vals = Prop2list[i][ii][ids][np.nonzero(Prop2list[i][ii][ids])]
+                ZMeans.append(np.mean(np.log10(Vals)))
+                ZStdDevs.append(np.std(np.log10(Vals)))
+                Z_ids.append(ids)
+
+            BoxMeans.append(ZMeans)
+            BoxStdDevs.append(ZStdDevs)
+            Box_ids.append(Z_ids)
+
+        AllBoxMeans.append(BoxMeans)
+        AllBoxStdDevs.append(BoxStdDevs)
+        Allids.append(Box_ids)
+
+    AllBoxMeans = np.array(AllBoxMeans)
+    AllBoxStdDevs = np.array(AllBoxStdDevs)
+
+    return(AllBoxMeans,AllBoxStdDevs,Xpoints)
 
 
 '''
@@ -248,7 +315,7 @@ def plot_brahma(AllBoxMeans,AllBoxStdDevs,XPoints,redshifts,legend_names,axislab
         ax.set_title('Z={}'.format(redshifts[n]),size = 25)
         n+=1
 
-    # f.legend(fontsize = 12)
+    # f.legend(fontsize = 12,loc=[0.575,0.65])
     f.supxlabel('{}'.format(axislabels[0]),fontsize=label_font_size)
     f.supylabel('{}'.format(axislabels[1]),fontsize=label_font_size,x=0)
 
@@ -471,9 +538,9 @@ Outputs:
 Writes data to file named 'fname.pickle'
 '''
 
-def Write2File(M,MStars,Sigma,VelsMag,Velocities,NStars,BH_Progs,IgnoredBhs,fname='BrahmaData'):
+def Write2File(*args,fname='BrahmaData'):
     
-    Data=[M,MStars,Sigma,VelsMag,Velocities,NStars,BH_Progs,IgnoredBhs]
+    Data=[arg for arg in args]
     
     with open(fname+'.pickle', 'wb') as handle:
         pickle.dump(Data, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -498,3 +565,48 @@ def ReadBrahmaData(fname='BrahmaData'):
         Data = pickle.load(handle)
         
     return(Data)
+
+
+'''
+fixed_x is a function that takes the traditional scaling relations (like M_BH-sigma) and provides
+y (M_BH) axis averages and std devs. vs. redshift for fixed values of the x axis (sigma).
+
+
+Inputs:
+
+X_vals: List of values typically on the x axis (like sigma) for each redshift desired
+Y_vals: List of values typically on the y axis (like M_BH) for each redshift desired
+fixed_vals: List of values of X_vals that you want to keep constant
+bin_width: Width of bins around fixed_vals to draw from X_vals
+
+Outputs:
+
+avgs: List of averages of X_vals at fixed_vals values
+stds: List of standard deviations around avgs
+
+'''
+
+def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
+    
+    avgs = []
+    stds = []
+
+    for i in range(len(fixed_vals)):
+
+        sigma_avgs = []
+        sigma_stds = []
+
+        for ii in range(len(X_vals)):
+
+            # Fetch indices of values within +/- bin_with of fixed_vals
+            index = np.logical_and(X_vals[ii] > fixed_vals[i]-bin_width,X_vals[ii] < fixed_vals[i]+bin_width)
+            avg = np.mean(np.array(Y_vals[ii])[index])
+            std = np.std(np.array(Y_vals[ii])[index])
+
+            sigma_avgs.append(avg)
+            sigma_stds.append(std)
+
+        avgs.append(sigma_avgs)
+        stds.append(sigma_stds)
+        
+    return(avgs,stds)
