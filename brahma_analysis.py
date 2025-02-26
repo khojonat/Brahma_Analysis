@@ -7,8 +7,10 @@ import arepo_package
 import math
 import matplotlib.pyplot as plt
 import illustris_python as il
-# import pickle5 as pickle
 import cloudpickle
+from rotate import *
+import h5py
+from scipy.interpolate import interp1d
 
 '''
 load_data is a function designed to load in BRAHMA data and store the desired data in a list of lists (of lists).
@@ -148,12 +150,12 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
     # I have no idea why this is necessary, but when I don't include this the loop breaks because of the num argument
     numbins=bins
 
-    # Want to find mean and std dev for each box
+    # Want to find mean and std dev for each simulation
     for i in range(len(Prop1list)):
 
         BoxMeans = []
         BoxStdDevs = []
-        Box_ids = []
+        Box_ids = [] 
         
         # low = math.floor(limits[0])
         # high = math.ceil(limits[1])
@@ -181,9 +183,36 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
                                           np.log10(Prop1list[i][ii])<=bins[iii+1]))[0]
                 
                 Vals = Prop2list[i][ii][ids][np.nonzero(Prop2list[i][ii][ids])]
-                ZMeans.append(np.mean(np.log10(Vals)))
-                ZStdDevs.append(np.std(np.log10(Vals)))
-                Z_ids.append(ids)
+                
+                # If we have at least 5 points in the bin
+                if len(Vals) > 5:
+
+                    ZMeans.append(np.mean(np.log10(Vals)))
+                    ZStdDevs.append(np.std(np.log10(Vals)))
+                    Z_ids.append(ids)
+                    
+#                     print("Plotting!\n")
+#                     if i==0:
+                        
+#                         print("Simulation: Illustris","Redshift:",redshifts[ii%2],"Sigma:",Xpoints[i][iii],"Num of points:",len(Vals))
+#                     else:
+#                         print("Simulation: TNG","Redshift:",redshifts[ii%2],"Sigma:",Xpoints[i][iii],"Num of points:",len(Vals))
+                
+                # Otherwise, skip this bin
+                else: 
+                    
+                    ZMeans.append(np.nan)
+                    ZStdDevs.append(np.nan)
+                    Z_ids.append(ids)
+                    
+#                     print("Not plotting!\n")
+#                     if i==0:
+                        
+#                         print("Simulation: Illustris","Redshift:",redshifts[ii%2],"Sigma:",Xpoints[i][iii],"Num of points:",len(Vals))
+#                     else:
+#                         print("Simulation: TNG","Redshift:",redshifts[ii%2],"Sigma:",Xpoints[i][iii],"Num of points:",len(Vals))
+                    
+                
 
             BoxMeans.append(ZMeans)
             BoxStdDevs.append(ZStdDevs)
@@ -197,6 +226,7 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
     AllBoxStdDevs = np.array(AllBoxStdDevs)
 
     return(AllBoxMeans,AllBoxStdDevs,Xpoints)
+
 
 '''
 Adjusted version of mean_trends to produce bins for each redshift in a box as opposed
@@ -248,9 +278,18 @@ def mean_trends_adj(Prop1list,Prop2list,redshifts,limits,bins:int):
                                           np.log10(Prop1list[i][ii])<=bins[iii+1]))[0]
                 
                 Vals = Prop2list[i][ii][ids][np.nonzero(Prop2list[i][ii][ids])]
-                ZMeans.append(np.mean(np.log10(Vals)))
-                ZStdDevs.append(np.std(np.log10(Vals)))
-                Z_ids.append(ids)
+                
+                if len(Vals) > 5:
+                    
+                    ZMeans.append(np.mean(np.log10(Vals)))
+                    ZStdDevs.append(np.std(np.log10(Vals)))
+                    Z_ids.append(ids)
+                
+                else: 
+                    
+                    ZMeans.append(np.nan)
+                    ZStdDevs.append(np.nan)
+                    Z_ids.append(ids)
 
             BoxMeans.append(ZMeans)
             BoxStdDevs.append(ZStdDevs)
@@ -657,163 +696,189 @@ def precent_growth(array,array_index,redshift_indices):
     return(vals,perc_growth)
     
 
-
-
-def Grav_Pot_E(Star_Props, DM_Props, Gas_Props,BH_Props):
     
-    '''
-    Calculates gravitational potential by summing the contribution
-    from every particle in the halo
-
-    Inputs:
-    Star_Props: Star particle masses, coordinates, and velocities. Masses assumed to be in solar masses, 
-                coordinates in kpc centered on the subhalo center, and velocities in km/s. Assumes wind 
-                particles have been filtered out as well
-    DM_Props:   Dark Matter particle coordinates, assumed to be in kpc centered on the subhalo center
-    Gas_Props:  Gas particle masses and coordinates, assumed to be in solar masses and
-                kpc centered on the subhalo center, respectively
-    BH_Props:   BH particle masses and coordinates, assumed to be in solar masses and
-                kpc centered on the subhalo center, respectively
-
-    Outputs: 
-    Grav_Pot_E: Array of gravitational potential energies for all stars in halo
-
-    '''
     
-    h = 0.6774
-    G = 4.3e-3 # pc^3 Msun^-1 s^-2
-    
-    M_Star = Star_Props[0] # Msun
-    r_Star = Star_Props[1] # kpc
-    v_Star = Star_Props[2] # km/s
-    
-    M_DM = 7.5e6 # Msun
-    r_DM = np.array(DM_Props) # kpc
-    
-    M_Gas = np.array(Gas_Props[0]) # Msun
-    r_Gas = np.array(Gas_Props[1]) # kpc
-    
-    M_BH = np.array(BH_Props[0]) # Msun
-    r_BH = np.array(BH_Props[1]) # kpc
-    
-    Grav_Pot_E = []
-    
-    # For each star particle, we want to calculate the grav. pot. E
-    for i in range(len(M_Star)):
-        
-        # Magnitude of grav. pot. E.
-        E = 0
-        
-        # Do calculation with each DM particle
-        
-        E += np.sum(G * M_DM * M_Star[i] / np.absolute(np.linalg.norm(r_DM - r_Star[i])))
-            
-        # Do calculation with each gas particle
-        
-        E += np.sum(G * M_Star[i] * M_Gas / np.absolute(np.linalg.norm(r_Star[i] - r_Gas)))
-            
-        # Do calculation with each BH particle
-        
-        E += np.sum(G * M_Star[i] * M_BH / np.absolute(np.linalg.norm(r_Star[i] - r_BH)))
-        
-        Grav_Pot_E.append(E)
-        
-    return(Grav_Pot_E)
-
-def Grav_Pot_E_efficient(Star_Props, DM_Props, Gas_Props, BH_Props):
-    '''
-    Optimized version of the gravitational potential energy calculation written by Chat GPT
-    Requests 4 PiB for the np array??
-    
-    Inputs:
-    Star_Props, DM_Props, Gas_Props, BH_Props (as before)
-    
-    Outputs:
-    Grav_Pot_E: Array of gravitational potential energies for all stars in halo
-    '''
-    
-    h = 0.6774
-    G = 4.3e-3  # pc^3 Msun^-1 s^-2
-    
-    M_Star = Star_Props[0]  # Msun
-    r_Star = Star_Props[1]  # kpc
-    v_Star = Star_Props[2]  # km/s
-    
-    M_DM = 7.5e6  # Msun
-    r_DM = np.array(DM_Props)  # kpc
-    
-    M_Gas = np.array(Gas_Props[0])  # Msun
-    r_Gas = np.array(Gas_Props[1])  # kpc
-    
-    M_BH = np.array(BH_Props[0])  # Msun
-    r_BH = np.array(BH_Props[1])  # kpc
-
-    # Precompute distances
-    r_Star_DM = np.linalg.norm(r_DM - r_Star[:, np.newaxis], axis=2)  # Distances between stars and DM particles
-    r_Star_Gas = np.linalg.norm(r_Gas - r_Star[:, np.newaxis], axis=2)  # Distances between stars and gas particles
-    r_Star_BH = np.linalg.norm(r_BH - r_Star[:, np.newaxis], axis=2)  # Distances between stars and BH particles
-
-    # Avoid division by zero by setting very small distances to a tiny value
-    r_Star_DM[r_Star_DM == 0] = 1e-10
-    r_Star_Gas[r_Star_Gas == 0] = 1e-10
-    r_Star_BH[r_Star_BH == 0] = 1e-10
-
-    # Compute gravitational potential energy for all stars at once
-    Grav_Pot_E_DM = np.sum(G * M_DM * M_Star[:, np.newaxis] / r_Star_DM, axis=1)
-    Grav_Pot_E_Gas = np.sum(G * M_Star[:, np.newaxis] * M_Gas / r_Star_Gas, axis=1)
-    Grav_Pot_E_BH = np.sum(G * M_Star[:, np.newaxis] * M_BH / r_Star_BH, axis=1)
-
-    # Final total gravitational potential energy
-    Grav_Pot_E = Grav_Pot_E_DM + Grav_Pot_E_Gas + Grav_Pot_E_BH
-    
-    return Grav_Pot_E
-
-
 '''
-kinematic_decomp is designed to perform a kinematic decomposition of a galaxy to 
-distinguish between stars that belong to the disk vs. bulge. This is done by 
-calculating the maximum (i.e. circular) (specific) angular momentum of each star 
-given its position, and taking the ratio between its actual angular momentum and 
-the circular angular momentum. The stars with j/jmax > 0.7 are classified as 
-belonging to the disk.
+Center_subhalo is designed to center the coordinates and velocities of star
+particles on the subhalo, as well as correct units from internal units to physical units
 
 Inputs:
-Star_Props: Star particle masses, coordinates, and velocities. Masses assumed to be in solar masses, 
-            coordinates in kpc centered on the subhalo center, and velocities in km/s. Assumes wind 
-            particles have been filtered out as well
-Grav_Pot_E: Array of gravitational potential energies for all stars in halo
+ParticleProps: Output from il.snapshot.loadSubhalo for stars 
+               Assumed to have coordinate, velocity, mass, and potential fields
+Subhaloprops: Output from il.groupcat.loadSubhalos for subhalo data
+              Assumed to have coordinate and velocity fields
+box_size: Boxsize of the sim as read in from the header via
+
+          hdr  = il.groupcat.loadHeader(basePath, snap_num)
+          box_size = hdr["BoxSize"]
+          
+redshift: Redshift of the current snapshot, can also be read in from header
+h: Hubble parameter for the simulation, also read in from header
+subhalo_id: Index of the subhalo
 
 Outputs:
-id_bulge: Indices of stars belonging to the bulge
-id_disk: Indices of stars belonging to the disk
-ratio_bulge: Ratio of stars that have been classified as belonging to the bulge
+Coordinates: Coordinates of stars in km, centered on subhalo center
+Velocities: Velocities of stars in km/s, centered on subhalo center
+Potentials: Potential of stars in (km/s)^2
+'''
+
+def Center_subhalo(ParticleProps,Subhaloprops,box_size,redshift,h,subhalo_id):
+    
+    a = 1/(1+redshift)
+    
+    Coordinates = ParticleProps['Coordinates']
+    Velocities = ParticleProps['Velocities']
+    Masses = ParticleProps['Masses']
+    Potentials = ParticleProps['Potential']
+    
+    Subhalo_Pos = Subhaloprops['SubhaloPos'][subhalo_id]
+    Subhalo_Vel = Subhaloprops['SubhaloVel'][subhalo_id]
+    
+    Coordinates = center(Coordinates,Subhalo_Pos,box_size)
+    Velocities = Velocities - Subhalo_Vel
+
+    # Correcting units, scale factor = 1 for z = 0
+    kpc2km = 3.0857e16 # Conversion rate from kpc to km
+    
+    Coordinates *= a/h # New units: kpc
+    Coordinates *= kpc2km # New units: km
+    Velocities *= np.sqrt(a) # New units: km/s
+    Potentials /= a # New units: (km/s)^2
+
+    ri   = 0 * kpc2km  # from 0
+    ro   = 20 * kpc2km # to 20 kpc
+    incl = calc_incl(Coordinates, Velocities, Masses, ri, ro) # rotate based on stars
+
+    Coordinates = trans(Coordinates, incl)
+    Velocities = trans(Velocities, incl)
+
+    return(Coordinates,Velocities,Potentials)
+    
+
+
+'''
+kinematic_decomp does a decomposition of subhalos based on the energetics of the stars.
+Stars with a lower specific angular momentum than 70% of the angular momentum for a star
+on a circular orbit at its position are classified as belonging to the spheroid, whereas
+those with grater than 70% are classified as belonging to the disk.
+
+Inputs:
+Coordinates: Array containing the coordinates of stars, assumed to be in km
+Velocities:  Array containing the velocities of stars, assumed to be in km/s
+Potentials:  Array containing the potentials of stars, assumed to be in (km/s)^2
+             Coordinates and velocities are assumed to be centered on the subhalo
+rbins: Number of radial bins to make along the disk radially when calculating stellar potentials
+nstars_min: Minimum number of stars required in a subhalo to do the decomposition
+
+Outputs:
+ratio: Ratio of j_z to j_circ for each star
+
 '''
 
 
-def kinematic_decomp(Star_Props,Grav_Pot_E):
+def kinematic_decomp(Coordinates,Velocities,Potentials,rbins=100,nstars_min=1000):
     
-    # Delimiter between bulge and disk stars
-    delim = 0.7
+    # Only do decomposition if there are at least nstars_min stars
+    if len(Coordinates)<nstars_min:
+        return
     
-    # Calculating circular velocity 
-    M_Star = Star_Props[0] # Msun
-    r_Star = Star_Props[1] # kpc
-    v_Star = Star_Props[2] # km/s
+    kpc2km = 3.0857e16 # Conversion rate from kpc to km
+    # radial distance from subhalo center in the xy plane
+    r = np.sqrt(Coordinates[:,0]**2 + Coordinates[:,1]**2)
     
-    # Calculated via energy
-    v_circ = np.sqrt(Grav_Pot_E/M_Star)
+    height = 3 * kpc2km # kpc for height of disk
+    ri   = 0 * kpc2km  # from 0
+    ro   = np.max(r) # to the max disk size of the subhalo
+    n = 30 # Number of stars required per bin 
+    nbins = 100 # 100 bins in disk
     
-    # Circular angular momentum at that radius
-    j_circ = np.abs(r_Star)*v_circ
+    bins = np.linspace(ri,ro,nbins)
+
+    # Only stars within the height of the disk
+    disk_mask = (Coordinates[:,2] > -height) & (Coordinates[:,2] < height)
+    disk_coords = Coordinates[disk_mask]
+    disk_pot = Potentials[disk_mask]
+    disk_r = r[disk_mask]    
+
+    # Potentials at each radial bin
+    potential_binned = np.zeros(shape=(len(bins)-1))
+
+    for i in range(len(bins)-1):
+
+        # Mask of stars within the current radial bin
+        r_mask = (disk_r > bins[i]) & (disk_r < bins[i+1])
+
+        # Coordinates, potentials of stars in current bin
+        r_bin = disk_coords[r_mask]
+        r_pot = disk_pot[r_mask]
+
+        # Require at least n stars in the radial bin to consider the radial potential well-defined
+        if len(r_bin) < n:
+            potential_binned[i] = np.nan
+
+        # Otherwise, take the average of the potentials in the bin
+        else:
+
+            # Calculate mean potential
+            potential = np.mean(r_pot)
+
+            # Append to list
+            potential_binned[i] = potential
     
-    j = np.cross(r_Star,v_Star)
+    # Removing nan values
+    potential_binned = potential_binned[~np.isnan(potential_binned)]
+            
+    # Positions in the middle of the bins
+    pos = np.array([np.mean([bins[n],bins[n+1]]) for n in range(len(potential_binned))])
+
+    # Calculating the gradient based on positions and potentials
+    grad = np.gradient(potential_binned,pos[1]-pos[0]) # pos[1]-pos[0] is the spacing between points
+
+    # Interpolating the gradient function with scipy 
+    gradient_interp = interp1d(pos, grad, kind='linear', fill_value="extrapolate")
     
-    ratio = j/j_circ
+    # Take the absolute value of the interpolated gradients
+    grad_phi_interp = np.abs(gradient_interp(r))
     
-    id_bulge = ratio < 0.7
-    id_disk = ratio > 0.7
+    # Calculate circular angular momentum
+    v_circ = np.sqrt(r * grad_phi_interp)
+    j_circ = r * v_circ
     
-    ratio_bulge = len(ratio[id_bulge])
+    # Calculate actual angular momentum
+    j_z = np.abs(np.cross(Coordinates,Velocities)[:,2])
     
-    return(id_bulge,id_disk,ratio_bulge)
+    # Take the ratio of the two
+    ratio=j_z/j_circ
     
+    # Return the ratio of the angular momentums to the specific angular momentums
+    return(ratio)
+    
+
+'''
+cal_avg is like mean_trends, but simplified for only one set of x and y values
+
+xvals and yvals in normal values, bins in log10
+'''
+
+def cal_avg(xvals,yvals,bins):
+    
+    # Getting rid of zero vals
+    nonzeroy = yvals != 0
+    yvals=yvals[nonzeroy]
+    
+    # Initialize empty lists
+    Means = []
+    StdDevs = []
+    
+    # Store average values of bins for plotting
+    xpoints = np.array([np.mean([bins[n],bins[n+1]]) for n in range(0,len(bins)-1)])
+    
+    for i in range(len(bins)-1):
+        
+        # Store the ids of the Property1 to calculate the mean and std.dev of Property2
+        ids = np.where(np.logical_and(np.log10(xvals)>=bins[i],np.log10(xvals)<=bins[i+1]))[0]
+        Vals = yvals[ids]
+        Means.append(np.mean(np.log10(Vals)))
+        StdDevs.append(np.std(np.log10(Vals)))
+        
+    return(Means,StdDevs,xpoints)
