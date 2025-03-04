@@ -771,6 +771,8 @@ rbins: Number of radial bins to make along the disk radially when calculating st
 nstars_min: Minimum number of stars required in a subhalo to do the decomposition
 
 Outputs:
+pos: Radial positions at which the gradients are given
+grad: Gravitational potential gradient at the radial positions 
 ratio: Ratio of j_z to j_circ for each star
 
 '''
@@ -792,7 +794,7 @@ def kinematic_decomp(Coordinates,Velocities,Potentials,rbins=100,nstars_min=1000
     n = 30 # Number of stars required per bin 
     nbins = 100 # 100 bins in disk
     
-    bins = np.linspace(ri,ro,nbins)
+    bins = overlapping_bins(ri,ro,nbins,dx=0.5)
 
     # Only stars within the height of the disk
     disk_mask = (Coordinates[:,2] > -height) & (Coordinates[:,2] < height)
@@ -801,12 +803,12 @@ def kinematic_decomp(Coordinates,Velocities,Potentials,rbins=100,nstars_min=1000
     disk_r = r[disk_mask]    
 
     # Potentials at each radial bin
-    potential_binned = np.zeros(shape=(len(bins)-1))
+    potential_binned = np.zeros(shape=len(bins))
 
-    for i in range(len(bins)-1):
+    for i in range(len(bins)):
 
         # Mask of stars within the current radial bin
-        r_mask = (disk_r > bins[i]) & (disk_r < bins[i+1])
+        r_mask = (disk_r > bins[i][0]) & (disk_r < bins[i][1])
 
         # Coordinates, potentials of stars in current bin
         r_bin = disk_coords[r_mask]
@@ -824,34 +826,44 @@ def kinematic_decomp(Coordinates,Velocities,Potentials,rbins=100,nstars_min=1000
 
             # Append to list
             potential_binned[i] = potential
-    
+        
     # Removing nan values
-    potential_binned = potential_binned[~np.isnan(potential_binned)]
+    no_nans = ~np.isnan(potential_binned)
+    potential_binned = potential_binned[no_nans]
             
     # Positions in the middle of the bins
-    pos = np.array([np.mean([bins[n],bins[n+1]]) for n in range(len(potential_binned))])
-
+    pos = np.array([np.mean(bins[n]) for n in range(len(bins))])
+    
+    # Removing nan potential indices from position
+    pos = pos[no_nans]
+    
     # Calculating the gradient based on positions and potentials
-    grad = np.gradient(potential_binned,pos[1]-pos[0]) # pos[1]-pos[0] is the spacing between points
-
+    grad = np.gradient(potential_binned,pos)
+        
     # Interpolating the gradient function with scipy 
     gradient_interp = interp1d(pos, grad, kind='linear', fill_value="extrapolate")
     
     # Take the absolute value of the interpolated gradients
-    grad_phi_interp = np.abs(gradient_interp(r))
+    grad_phi_interp = np.array(gradient_interp(r))
+    
+    # Find ids of negative potential gradients
+    neg_ids = grad_phi_interp < 0
+    
+    # Set negative potential gradients to np.nan
+    grad_phi_interp[neg_ids] = np.nan
     
     # Calculate circular angular momentum
     v_circ = np.sqrt(r * grad_phi_interp)
     j_circ = r * v_circ
     
     # Calculate actual angular momentum
-    j_z = np.abs(np.cross(Coordinates,Velocities)[:,2])
+    j_z = np.cross(Coordinates,Velocities)[:,2]
     
     # Take the ratio of the two
     ratio=j_z/j_circ
     
-    # Return the ratio of the angular momentums to the specific angular momentums
-    return(ratio)
+    # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
+    return(pos,grad,ratio)
     
 
 '''
@@ -882,3 +894,43 @@ def cal_avg(xvals,yvals,bins):
         StdDevs.append(np.std(np.log10(Vals)))
         
     return(Means,StdDevs,xpoints)
+
+
+'''
+overlapping_bins is pretty straightforward: It makes overlapping bins
+
+Inputs:
+start: Where to begin binning
+end: Where to end binning
+Nbins: Number of bins desired
+dx: Fraction of a full step l to be taken when constructing next bin
+    For non-overlapping bins, this would be 1
+    For dx > 1, you will miss regions within your given range
+    1 - dx gives the proportion of overlap between subsequent bins
+
+Output:
+bins: Overlapping bins as an array with bin edges in tuples
+
+'''
+
+def overlapping_bins(start,end,Nbins,dx=0.5):
+    
+    if dx > 1:
+        print("Warning: Bins will not cover full range")
+    
+    # Bin length
+    l = (end-start)/(1 + (Nbins - 1)*dx)
+    
+    # Initialize empty list
+    bins = []
+    
+    # Initialize start value for bins
+    bin_start=start
+    
+    for i in range(Nbins):
+        bin_end = bin_start + l # Value for current bin to end at
+        bin_i = (bin_start,bin_end) # Defining current bin
+        bins.append(bin_i)
+        bin_start += dx*l # Increase bin_start for next bin
+        
+    return(bins)
