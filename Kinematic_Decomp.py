@@ -33,70 +33,99 @@ Centrals = il.groupcat.loadHalos(basePath=basePath,snapNum=snap_num,fields='Grou
 Central_subhalos = Centrals[Centrals!=-1]
 
 # Initialize lists to append to
-Ratios = []
-Sigmas = []
+Ratios1 = []
+Ratios2 = []
+Ratios3 = []
+Sigmas1 = []
+Sigmas2 = []
 BH_Masses = []
 Star_Masses = []
 Coords = []
-Pot_E_norms = []
+e_bind_norms = []
+Pot_radii = []
+Pot_grads = []
+Central_ids = []
+Subhalo_vels = []
 
 
 # Now looping through all subhalos with BHs and 1000 stars
 for index in Desired_subhalos:
     
     # Skipping halos that might be broken 
-    try: 
+    # try: 
         
-        fields = ['BH_Mass']
-        Subhalo_BH_Masses = il.snapshot.loadSubhalo(basePath, snapNum=snap_num, id=index, partType=5, fields=fields)
-        
-        # Load in star properties of current halo
-        fields = ['Masses','Coordinates','Velocities','Potential']
-        Star_Props = il.snapshot.loadSubhalo(basePath, snap_num, id=index, partType=4, fields=fields)
-        Star_Mass=Star_Props['Masses']*1e10/h # Units: Msun
-        
-        # Center coord and vel and correct units
-        Coordinates,Velocities,Potentials = Center_subhalo(Star_Props,Subhaloprops,box_size,redshift,h,subhalo_id=index)
-        
-        # Calculating the binding energies of the stars
-        Pot_E = Star_Mass * Potentials
-        
-        # Normalizing to max binding energy
-        Pot_E_norm = Pot_E/np.abs(np.min(Pot_E))
-        
-        # Calculate id's of stars in the disk
-        pos,grad,ratio = kinematic_decomp(Coordinates,Velocities,Potentials)
-        
-        bulge = ratio < 0.5
-        
-        Bulge_vel = Velocities[bulge]
-        Bulge_mass = Star_Mass[bulge]
-        
-        # Calculate the velocity dispersion
-        
-        Mstars_total = np.sum(Bulge_mass) # Total stellar mass
+    fields = ['BH_Mass']
+    Subhalo_BH_Masses = il.snapshot.loadSubhalo(basePath, snapNum=snap_num, id=index, partType=5, fields=fields)
 
-        # Here we weight the sigma calculation by stellar mass
-        mu_vel = np.mean(Bulge_vel,axis=0) # Average 3D stellar velocity for this subhalo
-        DiffSquared=Bulge_mass[:, np.newaxis]*np.array((Bulge_vel - mu_vel)** 2)
+    # Load in star properties of current halo
+    fields = ['Masses','Coordinates','Velocities','Potential']
+    Star_Props = il.snapshot.loadSubhalo(basePath, snap_num, id=index, partType=4, fields=fields)
+    Star_Mass=Star_Props['Masses']*1e10/h # Units: Msun
 
-        Sigma_halo = np.sqrt(np.sum(DiffSquared,axis=0) / Mstars_total)  # Calculate sigma from subhalo velocity
+    # Center coord and vel and correct units
+    Coordinates,Velocities,Potentials = Center_subhalo(Star_Props,Subhaloprops,box_size,redshift,h,subhalo_id=index)
+
+    # Calculating specific binding energy
+    e_bind = 0.5*np.linalg.norm(np.array(Velocities)**2,axis=1) + Potentials
+
+    # Normalizing to max binding energy
+    e_bind_norm = e_bind/np.abs(np.min(e_bind))
+
+    # Calculate id's of stars in the bulge
+    pos,grad,ratio1,ratio2 = kinematic_decomp(Coordinates,Velocities,Potentials)
+
+    # 3rd circularity metric; not sure how helpful this will be...
+    ratio3 = np.cross(Coordinates,Velocities)[:,2]/(np.linalg.norm(Coordinates,axis=1)*np.linalg.norm(Velocities,axis=1))
+
+    bulge1 = ratio1 < 0.5
+    bulge2 = ratio2 < 0.5
+
+    Bulge_vel1 = Velocities[bulge1]
+    Bulge_mass1 = Star_Mass[bulge1]
+
+    Bulge_vel2 = Velocities[bulge2]
+    Bulge_mass2 = Star_Mass[bulge2]
+
+    # Calculate the velocity dispersion
+
+    Mstars_total1 = np.sum(Bulge_mass1) # Total stellar mass
+    Mstars_total2 = np.sum(Bulge_mass2) 
+
+    # Here we weight the sigma calculation by stellar mass
+    mu_vel1 = np.mean(Bulge_vel1,axis=0) # Average 3D stellar velocity for this subhalo
+    DiffSquared1=Bulge_mass1[:, np.newaxis]*np.array((Bulge_vel1 - mu_vel1)** 2)
+    mu_vel2 = np.mean(Bulge_vel2,axis=0) 
+    DiffSquared2=Bulge_mass2[:, np.newaxis]*np.array((Bulge_vel2 - mu_vel2)** 2)
+
+    Sigma_halo1 = np.sqrt(np.sum(DiffSquared1,axis=0) / Mstars_total1)  # Calculate sigma from subhalo velocity
+    Sigma_halo2 = np.sqrt(np.sum(DiffSquared2,axis=0) / Mstars_total2)  # Calculate sigma from subhalo velocity
+
+    Sigmas1.append(Sigma_halo1)
+    Sigmas2.append(Sigma_halo2)
+    BH_Masses.append(np.max(Subhalo_BH_Masses)) # Add most massive BH mass in subhalo to list
+    Ratios1.append(ratio1) # Append the ratio of jz/jcirc for stars in the subhalo
+    Ratios2.append(ratio2)
+    Ratios3.append(ratio3)
+    Coords.append(Coordinates)
+    Star_Masses.append(Star_Mass)
+    e_bind_norms.append(e_bind_norm)
+    Pot_radii.append(pos)
+    Pot_grads.append(grad)
+    Subhalo_vels.append(Velocities)
+    
+    if index in Central_subhalos:
+        Central_ids.append(index)
+    else:
+        Central_ids.append(-1) # A value of -1 indicates the the subhalo is not a central
+
+    print('Halo: {},'.format(index),'Sigma: {},'.format(np.linalg.norm(Sigma_halo1)),'BH mass: {},'.format(np.max(Subhalo_BH_Masses)),
+         'Ratio max/min: {},'.format((np.max(ratio1),np.min(ratio1)) ) )
         
-        Sigmas.append(Sigma_halo)
-        BH_Masses.append(np.max(Subhalo_BH_Masses)) # Add most massive BH mass in subhalo to list
-        Ratios.append(ratio) # Append the ratio of jz/jcirc for stars in the subhalo
-        Coords.append(Coordinates)
-        Star_Masses.append(Star_Mass)
-        Pot_E_norms.append(Pot_E_norm)
-        
-        print('Halo: {},'.format(index),'Sigma: {},'.format(np.linalg.norm(Sigma_halo)),'BH mass: {},'.format(np.max(Subhalo_BH_Masses)),
-             'Ratio max/min: {},'.format((np.max(ratio),np.min(ratio)) ) )
-        
-    except Exception:
-        print('Skipping halo {},'.format(index))
+    # except Exception:
+    #     print('Skipping halo {},'.format(index))
     
 
-Write2File(Ratios,Sigmas,BH_Masses,Coords,Star_Masses,pos,grad,Pot_E_norms,Central_subhalos,
-           fname='Brahma_Data/Kin_Decomp_TNG_z0_r0.5')
+Write2File(Ratios1,Ratios2,Ratios3,Sigmas1,Sigmas2,BH_Masses,Coords,Star_Masses,Pot_radii,Pot_grads,e_bind_norms,
+           Central_ids,Subhalo_vels,fname='Brahma_Data/Kin_Decomp_TNG_z0_r0.5')
     
 

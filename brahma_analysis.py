@@ -773,8 +773,8 @@ nstars_min: Minimum number of stars required in a subhalo to do the decompositio
 Outputs:
 pos: Radial positions at which the gradients are given
 grad: Gravitational potential gradient at the radial positions 
-ratio: Ratio of j_z to j_circ for each star
-
+ratio1: Ratio of j_z to j_circ for each star given its radius
+ratio2: Ratio of j_z to j_circ for each star given its specific binding energy
 '''
 
 
@@ -854,16 +854,20 @@ def kinematic_decomp(Coordinates,Velocities,Potentials,rbins=100,nstars_min=1000
     
     # Calculate circular angular momentum
     v_circ = np.sqrt(r * grad_phi_interp)
-    j_circ = r * v_circ
+    j_circ1 = r * v_circ
     
     # Calculate actual angular momentum
     j_z = np.cross(Coordinates,Velocities)[:,2]
     
+    # Calculate circular angular momentum given binding energy
+    j_circ2 = (-Potentials)**(3/2)/grad_phi_interp
+    
     # Take the ratio of the two
-    ratio=j_z/j_circ
+    ratio1 = j_z/j_circ1
+    ratio2 = j_z/j_circ2
     
     # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
-    return(pos,grad,ratio)
+    return(pos,grad,ratio1,ratio2)
     
 
 '''
