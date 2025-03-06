@@ -50,9 +50,6 @@ Subhalo_vels = []
 
 # Now looping through all subhalos with BHs and 1000 stars
 for index in Desired_subhalos:
-    
-    # Skipping halos that might be broken 
-    # try: 
         
     fields = ['BH_Mass']
     Subhalo_BH_Masses = il.snapshot.loadSubhalo(basePath, snapNum=snap_num, id=index, partType=5, fields=fields)
@@ -72,7 +69,9 @@ for index in Desired_subhalos:
     e_bind_norm = e_bind/np.abs(np.min(e_bind))
 
     # Calculate id's of stars in the bulge
-    pos,grad,ratio1,ratio2 = kinematic_decomp(Coordinates,Velocities,Potentials)
+    pos,grad,ratio1,negids = kinematic_decomp_r(Coordinates,Velocities,Potentials)
+    pos,grad,ratio2,negids = kinematic_decomp_e(Coordinates,Velocities,Potentials)
+    Velocities[negids] = np.nan
 
     # 3rd circularity metric; not sure how helpful this will be...
     ratio3 = np.cross(Coordinates,Velocities)[:,2]/(np.linalg.norm(Coordinates,axis=1)*np.linalg.norm(Velocities,axis=1))
@@ -120,9 +119,6 @@ for index in Desired_subhalos:
 
     print('Halo: {},'.format(index),'Sigma: {},'.format(np.linalg.norm(Sigma_halo1)),'BH mass: {},'.format(np.max(Subhalo_BH_Masses)),
          'Ratio max/min: {},'.format((np.max(ratio1),np.min(ratio1)) ) )
-        
-    # except Exception:
-    #     print('Skipping halo {},'.format(index))
     
 
 Write2File(Ratios1,Ratios2,Ratios3,Sigmas1,Sigmas2,BH_Masses,Coords,Star_Masses,Pot_radii,Pot_grads,e_bind_norms,
