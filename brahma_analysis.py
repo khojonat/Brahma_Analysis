@@ -768,7 +768,7 @@ Coordinates: Array containing the coordinates of stars, assumed to be in km
 Velocities:  Array containing the velocities of stars, assumed to be in km/s
 Potentials:  Array containing the potentials of stars, assumed to be in (km/s)^2
              Coordinates and velocities are assumed to be centered on the subhalo
-rbins: Number of radial bins to make along the disk radially when calculating stellar potentials
+nbins: Number of radial bins to make along the disk radially when calculating stellar potentials
 nstars_min: Minimum number of stars required in a subhalo to do the decomposition
 
 Outputs:
@@ -779,7 +779,7 @@ negids: ids of stellar angular momentums that were set to np.nan
 '''
 
 
-def kinematic_decomp_r(Coordinates,Velocities,Potentials,rbins=100,nstars_min=1000):
+def kinematic_decomp_r(Coordinates,Velocities,Potentials,nbins=500,nstars_min=1000):
     
     # Only do decomposition if there are at least nstars_min stars
     if len(Coordinates)<nstars_min:
@@ -793,7 +793,6 @@ def kinematic_decomp_r(Coordinates,Velocities,Potentials,rbins=100,nstars_min=10
     ri   = 0 * kpc2km  # from 0
     ro   = np.max(r) # to the max disk size of the subhalo
     n = 30 # Number of stars required per bin 
-    nbins = 100 # 100 bins in disk
     
     bins = overlapping_bins(ri,ro,nbins,dx=0.5)
 
@@ -878,7 +877,7 @@ Coordinates: Array containing the coordinates of stars, assumed to be in km
 Velocities:  Array containing the velocities of stars, assumed to be in km/s
 Potentials:  Array containing the potentials of stars, assumed to be in (km/s)^2
              Coordinates and velocities are assumed to be centered on the subhalo
-rbins: Number of radial bins to make along the disk radially when calculating stellar potentials
+nbins: Number of radial bins to make along the disk radially when calculating stellar potentials
 nstars_min: Minimum number of stars required in a subhalo to do the decomposition
 
 Outputs:
@@ -888,7 +887,7 @@ ratio: Ratio of j_z to j_circ for each star given its specific binding energy
 negids: ids of stellar angular momentums that were set to np.nan
 '''
 
-def kinematic_decomp_e(Coordinates,Velocities,Potentials,rbins=100,nstars_min=1000):
+def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=1000):
     
     # Only do decomposition if there are at least nstars_min stars
     if len(Coordinates)<nstars_min:
@@ -902,7 +901,6 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,rbins=100,nstars_min=10
     ri   = 0 * kpc2km  # from 0
     ro   = np.max(r) # to the max disk size of the subhalo
     n = 30 # Number of stars required per bin 
-    nbins = 100 # 100 bins in disk
     
     bins = overlapping_bins(ri,ro,nbins,dx=0.5)
 
@@ -953,20 +951,41 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,rbins=100,nstars_min=10
     # Interpolating the potentials and potential gradient function with scipy 
     gradient_interp = interp1d(pos, grad, kind='linear', fill_value="extrapolate")
     potental_interp = interp1d(pos, potential_binned, kind='linear', fill_value="extrapolate")
-    
-    # Defining new function for root finder to calculate rc
-    def f(r,e):
-        val = potental_interp(r) + 0.5*r*gradient_interp(r) - e
-        return(val)
-    
+
     # Calculate specific binding energies
     e = 0.5*np.linalg.norm(Velocities,axis=1)**2 + Potentials
-    
+    phimin = np.min(Potentials)
+      
+    # Defining new function for root finder to calculate rc
+    def f(r,args):
+        val = potental_interp(r) + 0.5*r*gradient_interp(r) - args[0]
+        return(val)
+        
     rcs = []
+    skipped_stars = 0
+    count=0
+    
     # Calculating circular radii for all stars given their binding energies e
     for e_bind in e:
-        rc = brentq(f,0,5*np.max(r),args=(e_bind)) # Choosing 5 times max radius to hopefully ensure sign(f(0)) = -sign(f(rmax))
-        rcs.append(rc)
+        args = [e_bind,phimin]
+        try:
+            a = 0
+            b = 5*np.max(r) # Choosing 5 times max radius to hopefully ensure sign(f(0)) = -sign(f(rmax))
+            rc = brentq(f,a,b,args=args)
+            rcs.append(rc)
+
+        # Inevitably, not all stars will have solutions:
+        except Exception as Ex:
+            
+            skipped_stars+=1
+            rcs.append(np.nan)
+            
+            if count < 10:
+                print(f(a,args),f(b,args))
+                count+=1
+            
+            
+    print("Nonzero rcs:",len(np.array(rcs)[~np.isnan(rcs)]), "Skipped stars: {}".format(skipped_stars))
     
     # Calculate interpolated gradients at rc
     grad_phi_interp = np.array(gradient_interp(rcs))
@@ -988,7 +1007,7 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,rbins=100,nstars_min=10
     ratio = j_z/j_circ
     
     # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
-    return(pos,grad,ratio,negids)
+    return(pos,grad,ratio,negids,rcs)
 
 
 
@@ -1028,7 +1047,7 @@ overlapping_bins is pretty straightforward: It makes overlapping bins
 Inputs:
 start: Where to begin binning
 end: Where to end binning
-Nbins: Number of bins desired
+nbins: Number of bins desired
 dx: Fraction of a full step l to be taken when constructing next bin
     For non-overlapping bins, this would be 1
     For dx > 1, you will miss regions within your given range
@@ -1039,13 +1058,13 @@ bins: Overlapping bins as an array with bin edges in tuples
 
 '''
 
-def overlapping_bins(start,end,Nbins,dx=0.5):
+def overlapping_bins(start,end,nbins,dx=0.5):
     
     if dx > 1:
         print("Warning: Bins will not cover full range")
     
     # Bin length
-    l = (end-start)/(1 + (Nbins - 1)*dx)
+    l = (end-start)/(1 + (nbins - 1)*dx)
     
     # Initialize empty list
     bins = []
@@ -1053,7 +1072,7 @@ def overlapping_bins(start,end,Nbins,dx=0.5):
     # Initialize start value for bins
     bin_start=start
     
-    for i in range(Nbins):
+    for i in range(nbins):
         bin_end = bin_start + l # Value for current bin to end at
         bin_i = (bin_start,bin_end) # Defining current bin
         bins.append(bin_i)
