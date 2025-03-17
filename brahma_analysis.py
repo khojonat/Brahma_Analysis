@@ -1013,7 +1013,7 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
     ratio = j_z/j_circ
     
     # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
-    return(pos,grad,ratio,negids,rcs,potential_binned,gradient_interp,potental_interp,bins)
+    return(pos,grad,ratio,negids,rcs,potential_binned,gradient_interp,potental_interp)
 
 
 
