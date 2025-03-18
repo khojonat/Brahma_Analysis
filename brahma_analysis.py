@@ -902,7 +902,7 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
     height = 3 * kpc2km # kpc for height of disk
     ri   = 0 * kpc2km  # from 0
     ro   = np.percentile(r, 97.5) # to where 95% of the stars exist. This prevents large outlier outlier radii from messing up the bins
-    n = 30 # Number of stars required per bin 
+    n = 3 # Number of stars required per bin 
     
     bins = overlapping_bins(ri,ro,nbins,dx=0.5)
 
@@ -946,9 +946,12 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
 
     # Removing nan potential indices from position
     pos = pos[no_nans]
-    
+
     # Calculating the gradient based on positions and potentials
-    grad = np.gradient(potential_binned,pos)
+    if len(potential_binned) > 1:
+        grad = np.gradient(potential_binned,pos)
+    else: # Temporary fix; subhalo 170 had no values in potential_binned? Need a better fix
+        return(np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan)
 
     window=10
     

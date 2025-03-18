@@ -65,6 +65,7 @@ for index in Desired_subhalos:
     
     # Calculate id's of stars in the bulge
     pos,grad,ratio,negids,rcs,potential_binned,gradient_interp,potental_interp = kinematic_decomp_e(Coordinates,Velocities,Potentials)
+    
     Velocities[negids] = np.nan
 
     bulge = ratio < 0.5
@@ -102,7 +103,7 @@ for index in Desired_subhalos:
         print("Subhalo {} failed".format(index))
     else:
         print('Subhalo: {},'.format(index),'Sigma: {},'.format(np.linalg.norm(Sigma_halo)),'BH mass: {},'.format(np.max(Subhalo_BH_Masses)),
-         'Ratio max/min: {},'.format((np.max(ratio),np.min(ratio)) ) )
+         'Ratio max/min: {},'.format((np.max(ratio[~np.isnan(ratio)]),np.min(ratio[~np.isnan(ratio)])) ) )
 
 failure_rate = failed_subhalos/len(Desired_subhalos)
 print("Failure rate: {}".format(failure_rate))
