@@ -14,6 +14,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import brentq
 from scipy.spatial import cKDTree
 from scipy.signal import savgol_filter
+from scipy.optimize import curve_fit
 
 '''
 load_data is a function designed to load in BRAHMA data and store the desired data in a list of lists (of lists).
@@ -408,8 +409,6 @@ def get_group_particle_data(basePath,desired_redshift,p_type,desired_index,parti
     Prop_subhalo,Prop_group,output_redshift=arepo_package.get_particle_property_within_postprocessed_groups(basePath,particle_property,p_type,desired_redshift,ActualSubhaloIndex,store_all_offsets=1,group_type='subhalo')
     
     return(Prop_subhalo,Prop_group,output_redshift)
-
-
 
 
 
@@ -901,7 +900,7 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
     
     height = 3 * kpc2km # kpc for height of disk
     ri   = 0 * kpc2km  # from 0
-    ro   = np.percentile(r, 97.5) # to where 95% of the stars exist. This prevents large outlier outlier radii from messing up the bins
+    ro   = np.percentile(r, 97.5) # to where 97.5% of the stars exist. This prevents large outlier outlier radii from messing up the bins
     n = 3 # Number of stars required per bin 
     
     bins = overlapping_bins(ri,ro,nbins,dx=0.5)
@@ -977,7 +976,6 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
     
     rcs = []
     skipped_stars = 0
-    count=0
     
     # Calculating circular radii for all stars given their binding energies e
     for i in range(len(Potentials)):
@@ -1017,6 +1015,100 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
     
     # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
     return(pos,grad,ratio,negids,rcs,potential_binned,gradient_interp,potental_interp)
+
+'''
+Testing the constant number of stars in each bin
+HMR in kpc
+'''
+
+def kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nbins=300,nstars_min=1000):
+    
+    # Only do decomposition if there are at least nstars_min stars
+    if len(Coordinates)<nstars_min:
+        return
+
+    # Removing linear potential gradient
+    corrected_potential = remove_linear_gradient(Coordinates,Potentials,HMR)
+    
+    kpc2km = 3.0857e16 # Conversion rate from kpc to km
+    # radial distance from subhalo center in the xy plane
+    r = np.sqrt(Coordinates[:,0]**2 + Coordinates[:,1]**2)
+    
+    height = 3 * kpc2km # kpc for height of disk
+    ri   = 0 * kpc2km  # from 0
+    ro   = 2*HMR * kpc2km # np.percentile(r, 97.5) 
+    
+    disk_mask = (Coordinates[:,2] > -height) & (Coordinates[:,2] < height)
+    disk_coords = Coordinates[disk_mask]
+    disk_pot = corrected_potential[disk_mask]
+    disk_r = r[disk_mask] 
+
+    # Only care about stars within ro
+    mask = disk_r < ro
+    rstars_masked = disk_r[mask]
+    potentials_masked = disk_pot[mask]
+
+    # Generating bin centers and averages
+    bin_centers,bin_averages = equal_num_bins(rstars_masked,potentials_masked,N=150)
+
+    # Smoothing average values and calculating gradient
+    window=10 # Choosing 15 instead of 10
+    smoothed_p = savgol_filter(bin_averages, window_length=window, polyorder=1)
+    potental_interp = interp1d(bin_centers, smoothed_p, kind='linear', fill_value="extrapolate")
+    
+    xvals = np.linspace(0,ro,150)
+    yvals = np.array([potental_interp(i) for i in xvals])
+    
+    grad = np.gradient(yvals,xvals)
+    smoothed_grad= savgol_filter(grad, window_length=window, polyorder=1)
+    gradient_interp = interp1d(xvals, smoothed_grad, kind='linear', fill_value="extrapolate")
+
+    # Defining new function for root finder to calculate rc
+    def f(r,args): # args: [stellar specific binding energy]
+        val = potental_interp(r) + 0.5*r*np.max([0,gradient_interp(r)]) - args[0] # np.max prevents negative potentials
+        return(val)
+    
+    rcs = []
+    skipped_stars = 0
+    
+    # Calculating circular radii for all stars given their binding energies e
+    for i in range(len(corrected_potential)):
+        args = [corrected_potential[i] + 0.5*np.linalg.norm(Velocities[i])**2]
+        try:
+            a = 0
+            b = 2*np.max(r)
+            rc = brentq(f,a,b,args=args)
+            rcs.append(rc)
+
+        # Inevitably, not all stars will have solutions:
+        except Exception as Ex:
+            
+            skipped_stars+=1
+            rcs.append(np.nan)
+            
+    print("Nonzero rcs:",len(np.array(rcs)[~np.isnan(rcs)]), "Skipped stars: {}".format(skipped_stars))
+    
+    # Calculate interpolated gradients at rc
+    grad_phi_interp = np.array(gradient_interp(rcs))
+    
+    # Find ids of negative potential gradients
+    negids = grad_phi_interp < 0
+    
+    # Set negative potential gradients to np.nan
+    grad_phi_interp[negids] = np.nan
+    
+    # Calculate circular angular momentum
+    v_circ = np.sqrt(rcs * grad_phi_interp)
+    j_circ = rcs * v_circ
+    
+    # Calculate actual angular momentum
+    j_z = np.cross(Coordinates,Velocities)[:,2]
+    
+    # Take the ratio of the two
+    ratio = j_z/j_circ
+    
+    # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
+    return(ratio,negids,rcs)#,xvals,grad,bin_centers,bin_averages,gradient_interp,potental_interp)
 
 
 
@@ -1091,48 +1183,74 @@ def overlapping_bins(start,end,nbins,dx=0.5):
 
 
 '''
-compute_binding_energy is a function to calculate the binding energy of each star 
-in a subhalo. 
-
-Inputs:
-masses: Masses of all particles in the subhalo, Gas, DM, stars, and BHs
-positions: Positions of all particles in the subhalo, Gas, DM, stars, and BHs
-velocities: Velocities of all particles in the subhalo, Gas, DM, stars, and BHs
-
-Outputs:
-binding_energies: Binding energies of every star in the subhalo
+equal_num_bins creates bins of a value (for my use, potentials or potential gradients)
+with an equal number of objects (stars) in each bin, then returns the average value 
+and position for each bin
 '''
 
-def compute_binding_energy(masses, positions, velocities):
-    """Computes specific binding energy for each star."""
-    G = 6.67e-20 # km^3 g^-1 s^-2
-    star_masses = masses["Stars"]
-    star_positions = positions["Stars"]
-    star_velocities = velocities
 
-    # Combine all particle masses & positions for potential calculation
-    all_masses = np.concatenate([masses[ptype] for ptype in ["Gas", "DM", "Stars", "BHs"]])
-    all_positions = np.concatenate([positions[ptype] for ptype in ["Gas", "DM", "Stars", "BHs"]])
-
-    num_stars = len(star_positions)
-    binding_energies = np.zeros(num_stars)
-
-    for i in range(num_stars):
-        pos_i = star_positions[i]
-        vel_i = star_velocities[i]
+def equal_num_bins(r,vals,N=150):
+    indices=np.argsort(r)
+    r_sorted = r[indices]
+    vals_sorted = vals[indices]
         
-        # Compute kinetic energy per unit mass
-        K = 0.5 * np.linalg.norm(vel_i)**2
-
-        # Compute gravitational potential energy per unit mass
-        r_vectors = all_positions - pos_i
-        distances = np.linalg.norm(r_vectors, axis=1)
-        valid_mask = distances > 0  # Avoid self-contribution
-        
-        U = -G * np.sum(all_masses[valid_mask] / distances[valid_mask])
-
-        # Compute specific binding energy
-        binding_energies[i] = K + U
-
-    return binding_energies
+    n = int(len(r)/N) # values per bin
+    print("Number of stars per bin:",n)
     
+    bin_centers = []
+    bin_medians = []
+    
+    # Loop through bins and calculate the average potential and the center of distances in each bin
+    for i in range(N):
+        start = i * n
+        end = (i + 1) * n
+        # Extract the bin slice for both distances and vals
+        bin_distances = r_sorted[start:end]
+        bin_vals = vals_sorted[start:end]
+        # Compute the average (mean) for the bin
+        bin_center = np.mean(bin_distances)
+        bin_median = np.median(bin_vals)
+        bin_centers.append(bin_center)
+        bin_medians.append(bin_median)
+
+    return(bin_centers,bin_medians)
+
+
+'''
+remove_linear_gradient removes any linear trend in the potentials of stars
+
+Inputs:
+Coordinates: Coordinates of the stars of the subhalo, in km
+Potentials: Potentials of the stars of the subhalo, in (km/s)^2
+HMR: Half mass radius of the subhalo, in kpc
+
+Outputs:
+corrected_potential: Potentials with the linear component subtracted off
+'''
+
+def remove_linear_gradient(Coordinates,Potentials,HMR):
+
+    kpc2km = 3.0857e16
+
+    # Only select stars at large radii to avoid fitting the linear component to the central potential well
+    rstars = np.sqrt(Coordinates[:,0]**2 + Coordinates[:,1]**2)
+    r_out_HMR_mask = rstars > HMR*kpc2km
+    r_out_HMR = rstars[r_out_HMR_mask]
+    
+    def model(xy, a, b, c):
+        x, y = xy
+        return a * x + b * y + c
+
+    # Get the coordinates of stars at greater than 2 times the HMR
+    x = Coordinates[:,0][r_out_HMR_mask]
+    y = Coordinates[:,1][r_out_HMR_mask]
+    Potentials_masked = Potentials[r_out_HMR_mask]
+    
+    params, covariance = curve_fit(model, (x, y), Potentials_masked)
+
+    fitted_potential = model((Coordinates[:,0], Coordinates[:,1]), *params)
+
+    # Subtract off the linear potential while keeping the normalization
+    corrected_potential = Potentials - fitted_potential + params[2]
+    
+    return(corrected_potential)
