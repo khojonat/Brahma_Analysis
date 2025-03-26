@@ -1231,19 +1231,28 @@ corrected_potential: Potentials with the linear component subtracted off
 def remove_linear_gradient(Coordinates,Potentials,HMR):
 
     kpc2km = 3.0857e16
-
-    # Only select stars at large radii to avoid fitting the linear component to the central potential well
-    rstars = np.sqrt(Coordinates[:,0]**2 + Coordinates[:,1]**2)
-    r_out_HMR_mask = rstars > HMR*kpc2km
-    r_out_HMR = rstars[r_out_HMR_mask]
     
     def model(xy, a, b, c):
         x, y = xy
         return a * x + b * y + c
 
+    # Only select stars at large radii to avoid fitting the linear component to the central potential well
+    rstars = np.sqrt(Coordinates[:,0]**2 + Coordinates[:,1]**2)
+    
+    r_out_HMR_mask = rstars > HMR*kpc2km
+    r_out_HMR = rstars[r_out_HMR_mask]
+
     # Get the coordinates of stars at greater than 2 times the HMR
     x = Coordinates[:,0][r_out_HMR_mask]
     y = Coordinates[:,1][r_out_HMR_mask]
+
+    if len(x < 3): # Need at least 3 points to make curve_fit model
+        r_out_HMR_mask = rstars > HMR*kpc2km/2
+        r_out_HMR = rstars[r_out_HMR_mask]
+
+        x = Coordinates[:,0][r_out_HMR_mask]
+        y = Coordinates[:,1][r_out_HMR_mask]
+
     Potentials_masked = Potentials[r_out_HMR_mask]
     
     params, covariance = curve_fit(model, (x, y), Potentials_masked)
