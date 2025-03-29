@@ -132,8 +132,9 @@ and standard deviation values for each bin at each redshift in each box
 
 Inputs:
 
-Prop1list,Prop2list: Lists of lists of properties you specified to pull
-redshifts: Redshifts you want to look at 
+Prop1list,Prop2list: Lists of lists of properties you specified to pull.
+                     Dimensions are expected to be (Different boxes, Different redshifts)
+redshifts: Redshifts entered in Prop1list,Prop2list
 limits: limits output from load_data, log10 of x axis min and max values
 bins: Number of bins you want along your x axis
 
@@ -215,8 +216,6 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 #                         print("Simulation: Illustris","Redshift:",redshifts[ii%2],"Sigma:",Xpoints[i][iii],"Num of points:",len(Vals))
 #                     else:
 #                         print("Simulation: TNG","Redshift:",redshifts[ii%2],"Sigma:",Xpoints[i][iii],"Num of points:",len(Vals))
-                    
-                
 
             BoxMeans.append(ZMeans)
             BoxStdDevs.append(ZStdDevs)
@@ -1019,13 +1018,15 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
 '''
 Testing the constant number of stars in each bin
 HMR in kpc
+
+nstars: stars per bin
 '''
 
-def kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nbins=300,nstars_min=1000):
+def kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nstars=150,nstars_min=1000):
     
     # Only do decomposition if there are at least nstars_min stars
     if len(Coordinates)<nstars_min:
-        return
+        return(np.nan)
 
     # Removing linear potential gradient
     corrected_potential = remove_linear_gradient(Coordinates,Potentials,HMR)
@@ -1036,7 +1037,7 @@ def kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nbins=300,nstars_m
     
     height = 3 * kpc2km # kpc for height of disk
     ri   = 0 * kpc2km  # from 0
-    ro   = 2*HMR * kpc2km # np.percentile(r, 97.5) 
+    ro   = np.percentile(r, 97.5) # 2*HMR * kpc2km
     
     disk_mask = (Coordinates[:,2] > -height) & (Coordinates[:,2] < height)
     disk_coords = Coordinates[disk_mask]
@@ -1049,12 +1050,15 @@ def kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nbins=300,nstars_m
     potentials_masked = disk_pot[mask]
 
     # Generating bin centers and averages
-    bin_centers,bin_averages = equal_num_bins(rstars_masked,potentials_masked,N=150)
+    bin_centers,bin_averages = equal_num_bins(rstars_masked,potentials_masked,N=nstars)
 
     # Smoothing average values and calculating gradient
-    window=10 # Choosing 15 instead of 10
-    smoothed_p = savgol_filter(bin_averages, window_length=window, polyorder=1)
-    potental_interp = interp1d(bin_centers, smoothed_p, kind='linear', fill_value="extrapolate")
+    window=10
+    if len(bin_averages) < window: # If less than 10 points, just interpolate based on however many points there are
+        potental_interp = interp1d(bin_centers, bin_averages, kind='linear', fill_value="extrapolate")
+    else:
+        smoothed_p = savgol_filter(bin_averages, window_length=window, polyorder=1)
+        potental_interp = interp1d(bin_centers, smoothed_p, kind='linear', fill_value="extrapolate")
     
     xvals = np.linspace(0,ro,150)
     yvals = np.array([potental_interp(i) for i in xvals])
@@ -1242,6 +1246,10 @@ def remove_linear_gradient(Coordinates,Potentials,HMR):
     r_out_mask = rstars > np.percentile(rstars, 95)
     r_out = rstars[r_out_mask]
 
+    # Some small subhalos will have very few stars
+    if len(r_out) < 3:
+        return(Potentials)
+    
     # Get the coordinates of stars at greater than the 95th percentile of stellar radii
     x = Coordinates[:,0][r_out_mask]
     y = Coordinates[:,1][r_out_mask]
