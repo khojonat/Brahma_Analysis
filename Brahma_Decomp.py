@@ -23,8 +23,8 @@ run='/AREPO/' # name of the simulation runs
 output='output_ratio10_SFMFGM5_seed5.00_' # Base name included in every box
 
 # Change these!
-box = 'bFOF_LW10_spin' # Name of the box we want to load data from
-desired_redshift=3 # Redshift of box that I want
+box = 'bFOF_LW10_spin_rich' # Name of the box we want to load data from
+desired_redshift=6 # Redshift of box that I want
 nstars_min = 30
 
 basePath = path_to_output+run+output+box # Combining paths to read data in 
@@ -97,8 +97,8 @@ for index in SubhaloIndicesWithBH:
     
     Coordinates,Velocities,Potentials = Center_subhalo(Star_Props,Subhaloprops,box_size,redshift,h,subhalo_id=index)
 
-    # If there are at least 150 stars, proceed normally
-    if len(Coordinates) > 150:
+    # If there are at least 1000 stars, proceed normally
+    if len(Coordinates) > 1000:
         Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nstars_min=nstars_min)
     # Otherwise, set the number of stars per bin to be ~1/20 the total number of stars, to make ~20 bins
     else:
@@ -111,13 +111,16 @@ for index in SubhaloIndicesWithBH:
         
     Velocities[negids] = np.nan
 
+    # Take the 3D velocity before doing standard deviation calculation
+    Vel3d = np.linalg.norm(Velocities,axis=1)
+
     bulge = ratio < 0.5
     disk = (ratio > 0.5) & (ratio < 1)
 
-    Bulge_vel = Velocities[bulge]
+    Bulge_vel = Vel3d[bulge]
     Bulge_mass = mstar_subhalo[bulge]
 
-    Disk_vel = Velocities[disk]
+    Disk_vel = Vel3d[disk]
     Disk_mass = mstar_subhalo[disk]
     
     # Calculate the velocity dispersion
@@ -129,11 +132,11 @@ for index in SubhaloIndicesWithBH:
     # Here we weight the sigma calculation by stellar mass
     mu_vel_bulge = np.mean(Bulge_vel,axis=0) # Average 3D stellar velocity for this subhalo
     mu_vel_disk = np.mean(Disk_vel,axis=0) 
-    mu_vel_total = np.mean(Velocities,axis=0) 
+    mu_vel_total = np.mean(Vel3d,axis=0) 
     
-    BulgeDiffSquared=Bulge_mass[:, np.newaxis]*np.array((Bulge_vel - mu_vel_bulge)** 2)
-    DiskDiffSquared=Disk_mass[:, np.newaxis]*np.array((Disk_vel - mu_vel_disk)** 2)
-    TotalDiffSquared=mstar_subhalo[:, np.newaxis]*np.array((Velocities - mu_vel_total)** 2)
+    BulgeDiffSquared=Bulge_mass*np.array((Bulge_vel - mu_vel_bulge)** 2)
+    DiskDiffSquared=Disk_mass*np.array((Disk_vel - mu_vel_disk)** 2)
+    TotalDiffSquared=mstar_subhalo*np.array((Vel3d - mu_vel_total)** 2)
 
     Sigma_bulge = np.sqrt(np.sum(BulgeDiffSquared,axis=0) / Mbulge_total)  # Calculate sigma from subhalo velocity
     Sigma_disk = np.sqrt(np.sum(DiskDiffSquared,axis=0) / Mdisk_total)
@@ -143,8 +146,9 @@ for index in SubhaloIndicesWithBH:
         failed_subhalos += 1
         print("Subhalo {} failed".format(index), flush=True)
     else:
-        print('Subhalo: {},'.format(index),'Sigma: {},'.format(np.linalg.norm(Sigma_bulge)),'BH mass: {},'.format(np.max(np.max(BHMasses_subhalo)*1e10*h)),
-         'Ratio max/min: {},'.format((np.max(ratio[~np.isnan(ratio)]),np.min(ratio[~np.isnan(ratio)])) ) , flush=True)
+        print('Subhalo: {},'.format(index),'Bulge sigma: {},'.format(Sigma_bulge),'Total sigma: {},'.format(Sigma_total),
+              'BH mass: {},'.format(np.max(np.max(BHMasses_subhalo)*1e10*h)),
+              'Ratio max/min: {},'.format((np.max(ratio[~np.isnan(ratio)]),np.min(ratio[~np.isnan(ratio)])) ) , flush=True)
 
     Ratios.append(ratio)
     Bulge_sigmas.append(Sigma_bulge)

@@ -1190,6 +1190,10 @@ def overlapping_bins(start,end,nbins,dx=0.5):
 equal_num_bins creates bins of a value (for my use, potentials or potential gradients)
 with an equal number of objects (stars) in each bin, then returns the average value 
 and position for each bin
+
+r: Radii
+vals: Potentials
+N: number of stars per bin
 '''
 
 
@@ -1198,16 +1202,16 @@ def equal_num_bins(r,vals,N=150):
     r_sorted = r[indices]
     vals_sorted = vals[indices]
         
-    n = int(len(r)/N) # values per bin
-    print("Number of stars per bin:",n)
+    n = int(len(r)/N) # Number of bins
+    print("Number of stars per bin:",N)
     
     bin_centers = []
     bin_medians = []
     
     # Loop through bins and calculate the average potential and the center of distances in each bin
-    for i in range(N):
-        start = i * n
-        end = (i + 1) * n
+    for i in range(n):
+        start = i * N
+        end = (i + 1) * N
         # Extract the bin slice for both distances and vals
         bin_distances = r_sorted[start:end]
         bin_vals = vals_sorted[start:end]
