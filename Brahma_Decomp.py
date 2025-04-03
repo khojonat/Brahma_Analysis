@@ -111,17 +111,16 @@ for index in SubhaloIndicesWithBH:
         
     Velocities[negids] = np.nan
 
-    # Take the 3D velocity before doing standard deviation calculation
-    Vel3d = np.linalg.norm(Velocities,axis=1)
-
     bulge = ratio < 0.5
     disk = (ratio > 0.5) & (ratio < 1)
 
-    Bulge_vel = Vel3d[bulge]
+    Bulge_vel = Velocities[bulge]
     Bulge_mass = mstar_subhalo[bulge]
+    Bulge_mass = Bulge_mass.reshape(len(Bulge_mass),1)
 
-    Disk_vel = Vel3d[disk]
+    Disk_vel = Velocities[disk]
     Disk_mass = mstar_subhalo[disk]
+    Disk_mass = Disk_mass.reshape(len(Disk_mass),1)
     
     # Calculate the velocity dispersion
 
@@ -129,15 +128,17 @@ for index in SubhaloIndicesWithBH:
     Mdisk_total = np.sum(Disk_mass)
     Mstars_total = np.sum(mstar_subhalo)
 
+    Total_mass = mstar_subhalo.reshape(len(mstar_subhalo),1)
+
     # Here we weight the sigma calculation by stellar mass
-    mu_vel_bulge = np.mean(Bulge_vel,axis=0) # Average 3D stellar velocity for this subhalo
-    mu_vel_disk = np.mean(Disk_vel,axis=0) 
-    mu_vel_total = np.mean(Vel3d,axis=0) 
+    mu_vel_bulge = np.sum(Bulge_mass * Bulge_vel) / Mbulge_total
+    mu_vel_disk = np.sum(Disk_mass * Disk_vel) / Mdisk_total
+    mu_vel_total = np.sum(Total_mass * Velocities) / Mstars_total
     
     BulgeDiffSquared=Bulge_mass*np.array((Bulge_vel - mu_vel_bulge)** 2)
     DiskDiffSquared=Disk_mass*np.array((Disk_vel - mu_vel_disk)** 2)
-    TotalDiffSquared=mstar_subhalo*np.array((Vel3d - mu_vel_total)** 2)
-
+    TotalDiffSquared=Total_mass*np.array((Velocities - mu_vel_total)** 2)
+    
     Sigma_bulge = np.sqrt(np.sum(BulgeDiffSquared,axis=0) / Mbulge_total)  # Calculate sigma from subhalo velocity
     Sigma_disk = np.sqrt(np.sum(DiskDiffSquared,axis=0) / Mdisk_total)
     Sigma_total = np.sqrt(np.sum(TotalDiffSquared,axis=0) / Mstars_total)
@@ -161,5 +162,3 @@ for index in SubhaloIndicesWithBH:
 
 Write2File(Ratios,Bulge_sigmas,Disk_sigmas,Total_sigmas,BH_Masses,Star_Masses,Coords,Subhalo_vels,
            fname=f'Brahma_Data/{box}_z{desired_redshift}_decomp')
-
-    
