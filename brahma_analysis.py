@@ -743,7 +743,7 @@ def Center_subhalo(ParticleProps,Subhaloprops,box_size,redshift,h,subhalo_id):
     
     Coordinates *= a/h # New units: kpc
     Coordinates *= kpc2km # New units: km
-    Velocities *= np.sqrt(a) # New units: km/s
+    Velocities /= np.sqrt(a) # New units: km/s
     Potentials /= a # New units: (km/s)^2
 
     ri   = 0 * kpc2km  # from 0
