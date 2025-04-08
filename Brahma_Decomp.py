@@ -24,7 +24,7 @@ output='output_ratio10_SFMFGM5_seed5.00_' # Base name included in every box
 
 # Change these!
 box = 'bFOF_LW10_spin_rich' # Name of the box we want to load data from
-desired_redshift=5 # Redshift of box that I want
+desired_redshift=6 # Redshift of box that I want
 nstars_min = 30
 
 basePath = path_to_output+run+output+box # Combining paths to read data in 
