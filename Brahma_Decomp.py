@@ -24,7 +24,7 @@ output='output_ratio10_SFMFGM5_seed5.00_' # Base name included in every box
 
 # Change these!
 box = 'bFOF_LW10_spin_rich' # Name of the box we want to load data from
-desired_redshift=6 # Redshift of box that I want
+desired_redshift=5 # Redshift of box that I want
 nstars_min = 30
 
 basePath = path_to_output+run+output+box # Combining paths to read data in 
@@ -60,7 +60,7 @@ requested_property=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,
 Age=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=4,fields='GFM_StellarFormationTime')
 
 # Subhalo properties
-Subhaloprops,o =  arepo_package.get_subhalo_property(basePath,['SubhaloVel','SubhaloPos','SubhaloHalfmassRad'],desired_redshift,postprocessed=1)
+Subhaloprops,o =  arepo_package.get_subhalo_property(basePath,['SubhaloVel','SubhaloPos','SubhaloHalfmassRadType'],desired_redshift,postprocessed=1)
 
 # Scale factor calculation for unit corrections
 a = 1/(1+output_redshift)
@@ -70,6 +70,7 @@ Ratios = []
 Bulge_sigmas = []
 Disk_sigmas = []
 Total_sigmas = []
+HMR_sigmas = []
 BH_Masses = []
 Star_Masses = []
 Coords = []
@@ -93,16 +94,18 @@ for index in SubhaloIndicesWithBH:
     pos_subhalo = pos_subhalo[mask]
 
     Star_Props = {'Masses':mstar_subhalo,'Coordinates':pos_subhalo,'Velocities':Vel_subhalo,'Potential':pot_subhalo}
-    HMR = Subhaloprops['SubhaloHalfmassRad'][index]
+    Stellar_HMR = Subhaloprops['SubhaloHalfmassRadType'][index][4]
     
     Coordinates,Velocities,Potentials = Center_subhalo(Star_Props,Subhaloprops,box_size,redshift,h,subhalo_id=index)
+    radii = np.linalg.norm(Coordinates,axis=1)
+    HMR_mask = radii < Stellar_HMR * kpc2km # For computing sigma in HMR
 
     # If there are at least 1000 stars, proceed normally
     if len(Coordinates) > 1000:
-        Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nstars_min=nstars_min)
+        Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars_min=nstars_min)
     # Otherwise, set the number of stars per bin to be ~1/20 the total number of stars, to make ~20 bins
     else:
-        Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nstars_min=nstars_min,nstars=int(len(Coordinates)/20))
+        Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars_min=nstars_min,nstars=int(len(Coordinates)/20))
 
     if Vals == np.nan: # Some subhalos still have less stars than nstars_min apparently...
         continue
@@ -121,27 +124,35 @@ for index in SubhaloIndicesWithBH:
     Disk_vel = Velocities[disk]
     Disk_mass = mstar_subhalo[disk]
     Disk_mass = Disk_mass.reshape(len(Disk_mass),1)
+
+    HMR_vel = Velocities[HMR_mask]
+    HMR_mass = mstar_subhalo[HMR_mask]
+    HMR_mass = HMR_mass.reshape(len(HMR_mass),1)
     
     # Calculate the velocity dispersion
 
     Mbulge_total = np.sum(Bulge_mass) # Total stellar mass
     Mdisk_total = np.sum(Disk_mass)
     Mstars_total = np.sum(mstar_subhalo)
+    MHMR_total = np.sum(HMR_mass)
 
     Total_mass = mstar_subhalo.reshape(len(mstar_subhalo),1)
 
     # Here we weight the sigma calculation by stellar mass
-    mu_vel_bulge = np.sum(Bulge_mass * Bulge_vel) / Mbulge_total
-    mu_vel_disk = np.sum(Disk_mass * Disk_vel) / Mdisk_total
-    mu_vel_total = np.sum(Total_mass * Velocities) / Mstars_total
+    mu_vel_bulge = np.sum(Bulge_mass * Bulge_vel,axis=0) / Mbulge_total
+    mu_vel_disk = np.sum(Disk_mass * Disk_vel,axis=0) / Mdisk_total
+    mu_vel_total = np.sum(Total_mass * Velocities,axis=0) / Mstars_total
+    mu_vel_HMR = np.sum(HMR_mass * HMR_vel,axis=0) / MHMR_total
     
     BulgeDiffSquared=Bulge_mass*np.array((Bulge_vel - mu_vel_bulge)** 2)
     DiskDiffSquared=Disk_mass*np.array((Disk_vel - mu_vel_disk)** 2)
     TotalDiffSquared=Total_mass*np.array((Velocities - mu_vel_total)** 2)
-    
+    HMRDiffSquared=HMR_mass*np.array((HMR_vel - mu_vel_HMR)** 2)
+
     Sigma_bulge = np.sqrt(np.sum(BulgeDiffSquared,axis=0) / Mbulge_total)  # Calculate sigma from subhalo velocity
     Sigma_disk = np.sqrt(np.sum(DiskDiffSquared,axis=0) / Mdisk_total)
     Sigma_total = np.sqrt(np.sum(TotalDiffSquared,axis=0) / Mstars_total)
+    Sigma_HMR = np.sqrt(np.sum(HMRDiffSquared,axis=0) / MHMR_total)
 
     if len(ratio[~np.isnan(ratio)]) == 0:
         failed_subhalos += 1
@@ -150,15 +161,16 @@ for index in SubhaloIndicesWithBH:
         print('Subhalo: {},'.format(index),'Bulge sigma: {},'.format(Sigma_bulge),'Total sigma: {},'.format(Sigma_total),
               'BH mass: {},'.format(np.max(np.max(BHMasses_subhalo)*1e10*h)),
               'Ratio max/min: {},'.format((np.max(ratio[~np.isnan(ratio)]),np.min(ratio[~np.isnan(ratio)])) ) , flush=True)
-
+    
     Ratios.append(ratio)
     Bulge_sigmas.append(Sigma_bulge)
     Disk_sigmas.append(Sigma_disk)
     Total_sigmas.append(Sigma_total)
+    HMR_sigmas.append(Sigma_HMR)
     BH_Masses.append(np.max(BHMasses_subhalo)*1e10*h)
     Star_Masses.append(np.sum(mstar_subhalo)*1e10*h)
     Coords.append(Coordinates)
     Subhalo_vels.append(Velocities)
 
-Write2File(Ratios,Bulge_sigmas,Disk_sigmas,Total_sigmas,BH_Masses,Star_Masses,Coords,Subhalo_vels,
+Write2File(Ratios,Bulge_sigmas,Disk_sigmas,Total_sigmas,HMR_sigmas,BH_Masses,Star_Masses,Coords,Subhalo_vels,
            fname=f'Brahma_Data/{box}_z{desired_redshift}_decomp')

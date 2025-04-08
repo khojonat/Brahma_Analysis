@@ -1017,19 +1017,18 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=10
 
 '''
 Testing the constant number of stars in each bin
-HMR in kpc
 
 nstars: stars per bin
 '''
 
-def kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nstars=150,nstars_min=1000):
+def kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars=150,nstars_min=1000):
     
     # Only do decomposition if there are at least nstars_min stars
     if len(Coordinates)<nstars_min:
         return(np.nan)
 
     # Removing linear potential gradient
-    corrected_potential = remove_linear_gradient(Coordinates,Potentials,HMR)
+    corrected_potential = remove_linear_gradient(Coordinates,Potentials)
     
     kpc2km = 3.0857e16 # Conversion rate from kpc to km
     # radial distance from subhalo center in the xy plane
@@ -1037,7 +1036,7 @@ def kinematic_decomp_e2(Coordinates,Velocities,Potentials,HMR,nstars=150,nstars_
     
     height = 3 * kpc2km # kpc for height of disk
     ri   = 0 * kpc2km  # from 0
-    ro   = np.percentile(r, 97.5) # 2*HMR * kpc2km
+    ro   = np.percentile(r, 97.5) # 97.5th percentile of stars
     
     disk_mask = (Coordinates[:,2] > -height) & (Coordinates[:,2] < height)
     disk_coords = Coordinates[disk_mask]
@@ -1230,13 +1229,12 @@ remove_linear_gradient removes any linear trend in the potentials of stars
 Inputs:
 Coordinates: Coordinates of the stars of the subhalo, in km
 Potentials: Potentials of the stars of the subhalo, in (km/s)^2
-HMR: Half mass radius of the subhalo, in kpc
 
 Outputs:
 corrected_potential: Potentials with the linear component subtracted off
 '''
 
-def remove_linear_gradient(Coordinates,Potentials,HMR):
+def remove_linear_gradient(Coordinates,Potentials):
 
     kpc2km = 3.0857e16
     
@@ -1247,7 +1245,7 @@ def remove_linear_gradient(Coordinates,Potentials,HMR):
     # Only select stars at large radii to avoid fitting the linear component to the central potential well
     rstars = np.sqrt(Coordinates[:,0]**2 + Coordinates[:,1]**2)
     
-    r_out_mask = rstars > np.percentile(rstars, 95)
+    r_out_mask = rstars > np.percentile(rstars, 95) # Stars outside of 95th percentile
     r_out = rstars[r_out_mask]
 
     # Some small subhalos will have very few stars
