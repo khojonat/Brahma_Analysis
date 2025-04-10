@@ -1,8 +1,9 @@
 '''
-Now recalculating M-sigma for Brahma sims with the bulge-disk decomposition
+This script was written to apply the kinematic decomposition to the BRAHMA simulations
+and store the BH masses and bulge stellar masses and stellar velocity dispersions
 '''
 
-from brahma_analysis import *
+from brahma_analysis_clean import *
 import sys
 import os
 sys.path.append('/home/yja6qa/arepo_package')

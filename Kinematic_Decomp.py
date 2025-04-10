@@ -1,5 +1,10 @@
+'''
+This script was written to apply the kinematic decomposition to Illustris and IllustrisTNG
+and store the BH masses and bulge stellar masses and stellar velocity dispersions
+'''
+
 import sys
-from brahma_analysis import *
+from brahma_analysis_clean import *
 sys.path.append('/home/yja6qa/arepo_package/')
 
 import arepo_package
