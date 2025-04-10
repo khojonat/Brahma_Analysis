@@ -763,6 +763,9 @@ Stars with a lower specific angular momentum than 50% of the angular momentum fo
 on a circular orbit at its position are classified as belonging to the spheroid, whereas
 those with grater than 50% are classified as belonging to the disk.
 
+This was an initial attempt at doing a decomposition that left many stars from the disk
+contaminating what was classified as the bulge component. Hence, the next function was developed.
+
 Inputs:
 Coordinates: Array containing the coordinates of stars, assumed to be in km
 Velocities:  Array containing the velocities of stars, assumed to be in km/s
@@ -865,7 +868,7 @@ def kinematic_decomp_r(Coordinates,Velocities,Potentials,nbins=500,nstars_min=10
     # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
     return(pos,grad,ratio,negids)
     
-    
+
 '''
 kinematic_decomp_e does a decomposition of a subhalo based on the energetics of the stars.
 Stars with a lower specific angular momentum than 50% of the angular momentum for a star
@@ -877,151 +880,16 @@ Coordinates: Array containing the coordinates of stars, assumed to be in km
 Velocities:  Array containing the velocities of stars, assumed to be in km/s
 Potentials:  Array containing the potentials of stars, assumed to be in (km/s)^2
              Coordinates and velocities are assumed to be centered on the subhalo
-nbins: Number of radial bins to make along the disk radially when calculating stellar potentials
+nstars: Number of stars per bin for calculating radially binned stellar potentials
 nstars_min: Minimum number of stars required in a subhalo to do the decomposition
 
 Outputs:
-pos: Radial positions at which the gradients are given
-grad: Gravitational potential gradient at the radial positions 
 ratio: Ratio of j_z to j_circ for each star given its specific binding energy
 negids: ids of stellar angular momentums that were set to np.nan
+rcs: Calculated circular radii of stars
 '''
 
-def kinematic_decomp_e(Coordinates,Velocities,Potentials,nbins=300,nstars_min=1000):
-    
-    # Only do decomposition if there are at least nstars_min stars
-    if len(Coordinates)<nstars_min:
-        return
-    
-    kpc2km = 3.0857e16 # Conversion rate from kpc to km
-    # radial distance from subhalo center in the xy plane
-    r = np.sqrt(Coordinates[:,0]**2 + Coordinates[:,1]**2)
-    
-    height = 3 * kpc2km # kpc for height of disk
-    ri   = 0 * kpc2km  # from 0
-    ro   = np.percentile(r, 97.5) # to where 97.5% of the stars exist. This prevents large outlier outlier radii from messing up the bins
-    n = 3 # Number of stars required per bin 
-    
-    bins = overlapping_bins(ri,ro,nbins,dx=0.5)
-
-    # Only stars within the height of the disk
-    disk_mask = (Coordinates[:,2] > -height) & (Coordinates[:,2] < height)
-    disk_coords = Coordinates[disk_mask]
-    disk_pot = Potentials[disk_mask]
-    disk_r = r[disk_mask]    
-
-    # Potentials at each radial bin
-    potential_binned = np.zeros(shape=len(bins))
-
-    for i in range(len(bins)):
-
-        # Mask of stars within the current radial bin
-        r_mask = (disk_r > bins[i][0]) & (disk_r < bins[i][1])
-
-        # Coordinates, potentials of stars in current bin
-        r_bin = disk_coords[r_mask]
-        r_pot = disk_pot[r_mask]
-
-        # Require at least n stars in the radial bin to consider the radial potential well-defined
-        if len(r_bin) < n:
-            potential_binned[i] = np.nan
-
-        # Otherwise, take the average of the potentials in the bin
-        else:
-
-            # Calculate mean potential
-            potential = np.mean(r_pot)
-
-            # Append to list
-            potential_binned[i] = potential
-        
-    # Removing nan values
-    no_nans = ~np.isnan(potential_binned)
-    potential_binned = potential_binned[no_nans]
-            
-    # Positions in the middle of the bins
-    pos = np.array([np.mean(bins[n]) for n in range(len(bins))])
-
-    # Removing nan potential indices from position
-    pos = pos[no_nans]
-
-    # Calculating the gradient based on positions and potentials
-    if len(potential_binned) > 1:
-        grad = np.gradient(potential_binned,pos)
-    else: # Temporary fix; subhalo 170 had no values in potential_binned? Need a better fix
-        return(np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan)
-
-    window=10
-    
-    if 0.5*len(grad) > window: # Only want to use smoothing if the binned data is large enough
-
-        # Trying smoothing
-        smoothed_g = savgol_filter(grad, window_length=window, polyorder=1)
-        gradient_interp = interp1d(pos, smoothed_g, kind='linear', fill_value="extrapolate")
-    
-        smoothed_p = savgol_filter(potential_binned, window_length=window, polyorder=1)
-        potental_interp = interp1d(pos, smoothed_p, kind='linear', fill_value="extrapolate")
-                
-    else: # Otherwise, just the use interpolation functions
-
-        # Interpolating the potentials and potential gradient function with scipy 
-        gradient_interp = interp1d(pos, grad, kind='linear', fill_value="extrapolate")
-        potental_interp = interp1d(pos, potential_binned, kind='linear', fill_value="extrapolate")
-
-    # Defining new function for root finder to calculate rc
-    def f(r,args): # args: [stellar specific binding energy]
-        val = potental_interp(r) + 0.5*r*np.max([0,gradient_interp(r)]) - args[0] # np.max prevents negative potentials
-        return(val)
-    
-    rcs = []
-    skipped_stars = 0
-    
-    # Calculating circular radii for all stars given their binding energies e
-    for i in range(len(Potentials)):
-        args = [Potentials[i] + 0.5*np.linalg.norm(Velocities[i])**2]
-        try:
-            a = 0
-            b = 2*np.max(r)
-            rc = brentq(f,a,b,args=args)
-            rcs.append(rc)
-
-        # Inevitably, not all stars will have solutions:
-        except Exception as Ex:
-            
-            skipped_stars+=1
-            rcs.append(np.nan)
-            
-    print("Nonzero rcs:",len(np.array(rcs)[~np.isnan(rcs)]), "Skipped stars: {}".format(skipped_stars))
-    
-    # Calculate interpolated gradients at rc
-    grad_phi_interp = np.array(gradient_interp(rcs))
-    
-    # Find ids of negative potential gradients
-    negids = grad_phi_interp < 0
-    
-    # Set negative potential gradients to np.nan
-    grad_phi_interp[negids] = np.nan
-    
-    # Calculate circular angular momentum
-    v_circ = np.sqrt(rcs * grad_phi_interp)
-    j_circ = rcs * v_circ
-    
-    # Calculate actual angular momentum
-    j_z = np.cross(Coordinates,Velocities)[:,2]
-    
-    # Take the ratio of the two
-    ratio = j_z/j_circ
-    
-    # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
-    return(pos,grad,ratio,negids,rcs,potential_binned,gradient_interp,potental_interp)
-
-'''
-Testing the constant number of stars in each bin
-
-nstars: stars per bin
-'''
-
-def kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars=150,nstars_min=1000):
+def kinematic_decomp_e(Coordinates,Velocities,Potentials,nstars=150,nstars_min=1000):
     
     # Only do decomposition if there are at least nstars_min stars
     if len(Coordinates)<nstars_min:
@@ -1068,7 +936,7 @@ def kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars=150,nstars_min=
 
     # Defining new function for root finder to calculate rc
     def f(r,args): # args: [stellar specific binding energy]
-        val = potental_interp(r) + 0.5*r*np.max([0,gradient_interp(r)]) - args[0] # np.max prevents negative potentials
+        val = potental_interp(r) + 0.5*r*np.max([0,gradient_interp(r)]) - args[0] 
         return(val)
     
     rcs = []
@@ -1110,9 +978,7 @@ def kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars=150,nstars_min=
     # Take the ratio of the two
     ratio = j_z/j_circ
     
-    # Return the radial positions, gradients, and ratio of the angular momentums to the specific angular momentums
-    return(ratio,negids,rcs)#,xvals,grad,bin_centers,bin_averages,gradient_interp,potental_interp)
-
+    return(ratio,negids,rcs)
 
 
 '''
@@ -1147,6 +1013,8 @@ def cal_avg(xvals,yvals,bins):
 
 '''
 overlapping_bins is pretty straightforward: It makes overlapping bins
+This wasn't the best at reducing noise in my binning, so ended up 
+using the next function instead
 
 Inputs:
 start: Where to begin binning
@@ -1194,7 +1062,6 @@ r: Radii
 vals: Potentials
 N: number of stars per bin
 '''
-
 
 def equal_num_bins(r,vals,N=150):
     indices=np.argsort(r)

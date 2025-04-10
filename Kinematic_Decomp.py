@@ -86,10 +86,10 @@ for index in Desired_subhalos:
         
         # Calculate id's of stars in the bulge
         if len(Coordinates) > 1000:
-            Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials)
+            Vals = kinematic_decomp_e(Coordinates,Velocities,Potentials)
         # Otherwise, set the number of stars per bin to be ~1/20 the total number of stars, to make ~20 bins
         else:
-            Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars=int(len(Coordinates)/20))
+            Vals = kinematic_decomp_e(Coordinates,Velocities,Potentials,nstars=int(len(Coordinates)/20))
     
         if type(Vals)==float: # Some subhalos still have less stars than nstars_min apparently...
             skipped_subhalos+=1

@@ -102,10 +102,10 @@ for index in SubhaloIndicesWithBH:
 
     # If there are at least 1000 stars, proceed normally
     if len(Coordinates) > 1000:
-        Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars_min=nstars_min)
+        Vals = kinematic_decomp_e(Coordinates,Velocities,Potentials,nstars_min=nstars_min)
     # Otherwise, set the number of stars per bin to be ~1/20 the total number of stars, to make ~20 bins
     else:
-        Vals = kinematic_decomp_e2(Coordinates,Velocities,Potentials,nstars_min=nstars_min,nstars=int(len(Coordinates)/20))
+        Vals = kinematic_decomp_e(Coordinates,Velocities,Potentials,nstars_min=nstars_min,nstars=int(len(Coordinates)/20))
 
     if Vals == np.nan: # Some subhalos still have less stars than nstars_min apparently...
         continue
