@@ -61,7 +61,7 @@ requested_property=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,
 Age=il.snapshot.loadSubset_groupordered(basePath,output_snapshot,partType=4,fields='GFM_StellarFormationTime')
 
 # Subhalo properties
-Subhaloprops,o =  arepo_package.get_subhalo_property(basePath,['SubhaloVel','SubhaloPos','SubhaloHalfmassRadType'],desired_redshift,postprocessed=1)
+Subhaloprops,o =  arepo_package.get_subhalo_property(basePath,['SubhaloVel','SubhaloPos','SubhaloHalfmassRadType','SubhaloHalfmassRad'],desired_redshift,postprocessed=1)
 
 # Scale factor calculation for unit corrections
 a = 1/(1+output_redshift)
@@ -76,6 +76,8 @@ BH_Masses = []
 Star_Masses = []
 Coords = []
 Subhalo_vels = []
+StellarHMRs = []
+HMRs = []
 failed_subhalos = 0
 
 
@@ -95,7 +97,8 @@ for index in SubhaloIndicesWithBH:
     pos_subhalo = pos_subhalo[mask]
 
     Star_Props = {'Masses':mstar_subhalo,'Coordinates':pos_subhalo,'Velocities':Vel_subhalo,'Potential':pot_subhalo}
-    Stellar_HMR = Subhaloprops['SubhaloHalfmassRadType'][index][4]
+    Stellar_HMR = Subhaloprops['SubhaloHalfmassRadType'][index][4] * a/h # Units: kpc
+    HMR = Subhaloprops['SubhaloHalfmassRad'][index] * a/h # Units: kpc
     
     Coordinates,Velocities,Potentials = Center_subhalo(Star_Props,Subhaloprops,box_size,redshift,h,subhalo_id=index)
     radii = np.linalg.norm(Coordinates,axis=1)
@@ -172,6 +175,8 @@ for index in SubhaloIndicesWithBH:
     Star_Masses.append(np.sum(mstar_subhalo)*1e10*h)
     Coords.append(Coordinates)
     Subhalo_vels.append(Velocities)
+    StellarHMRs.append(Stellar_HMR)
+    HMRs.append(HMR)
 
-Write2File(Ratios,Bulge_sigmas,Disk_sigmas,Total_sigmas,HMR_sigmas,BH_Masses,Star_Masses,Coords,Subhalo_vels,
+Write2File(Ratios,Bulge_sigmas,Disk_sigmas,Total_sigmas,HMR_sigmas,BH_Masses,Star_Masses,Coords,Subhalo_vels,StellarHMRs,HMRs,
            fname=f'Brahma_Data/{box}_z{desired_redshift}_decomp')
