@@ -18,8 +18,8 @@ sys.stderr = sys.__stderr__
 TNGpath='/standard/torrey-group/IllustrisTNG/Runs/L75n1820TNG'
 Illustrispath='/standard/torrey-group/Illustris/Runs/L75n1820FP'
 
-basePath = Illustrispath
-snap_num=135 # 135 for z=0 and 49 for z=5 in Illustris, 99 for z=0 and 17 for z=5 in TNG
+basePath = TNGpath
+snap_num=99 # 135 for z=0 and 49 for z=5 in Illustris, 99 for z=0 and 17 for z=5 in TNG
 hdr  = il.groupcat.loadHeader(basePath, snap_num)
 box_size = hdr["BoxSize"]
 redshift = hdr['Redshift']
@@ -49,11 +49,9 @@ Centrals = il.groupcat.loadHalos(basePath=basePath,snapNum=snap_num,fields='Grou
 Central_subhalos = Centrals[Centrals!=-1]
 
 # Initialize lists to append to
-Ratios = []
 Sigmas = []
 BH_Masses = []
 Star_Masses = []
-Coords = []
 Central_ids = []
 Subhalo_vels = []
 failed_subhalos = 0
@@ -63,11 +61,12 @@ halosskipped = 0
 print('Looping through desired subhalos ...', flush=True)
 
 # Now looping through all subhalos with BHs and 1000 stars
-for index in Desired_subhalos:
+for i in range(len(Desired_subhalos)):
+    index = Desired_subhalos[i]
 
     try: 
     
-        print(f'Subhalo {index}',flush=True)
+        print(f'Subhalo {index}, {100*i/len(Desired_subhalos):.3f}% finished',flush=True)
         
         HMR = Subhaloprops['SubhaloHalfmassRad'][index]
             
@@ -123,8 +122,6 @@ for index in Desired_subhalos:
     
         Sigmas.append(Sigma_bulge)
         BH_Masses.append(np.max(Subhalo_BH_Masses)*1e10*h) # Add most massive BH mass in subhalo to list
-        Ratios.append(ratio) # Append the ratio of jz/jcirc for stars in the subhalo
-        Coords.append(Coordinates)
         Star_Masses.append(np.sum(Star_Mass)*1e10*h)
         Subhalo_vels.append(Velocities)
         
@@ -148,6 +145,6 @@ print("Failure rate: {}".format(failure_rate),flush=True)
 print(f"Nan values: {skipped_subhalos}",flush=True)
 print(f"(Potentially) Missing files: {halosskipped}",flush=True)
 
-Write2File(Ratios,Sigmas,BH_Masses,Coords,Star_Masses,Central_ids,Subhalo_vels,fname='Brahma_Data/Kin_Decomp_Ill_z0')
+Write2File(Sigmas,BH_Masses,Star_Masses,Central_ids,Subhalo_vels,fname='Brahma_Data/Kin_Decomp_TNG_z0')
 
 
