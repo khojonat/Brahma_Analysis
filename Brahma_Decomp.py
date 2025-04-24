@@ -24,8 +24,9 @@ run='/AREPO/' # name of the simulation runs
 output='output_ratio10_SFMFGM5_seed5.00_' # Base name included in every box
 
 # Change these!
-box = 'bFOF_LW10_spin_rich' # Name of the box we want to load data from
-desired_redshift=6 # Redshift of box that I want
+box = 'bFOF' # Name of the box we want to load data from
+# desired_redshift=0 
+desired_redshift=int(sys.argv[1]) # Redshift of box that I want
 nstars_min = 30
 
 basePath = path_to_output+run+output+box # Combining paths to read data in 
@@ -163,7 +164,7 @@ for index in SubhaloIndicesWithBH:
         print("Subhalo {} failed".format(index), flush=True)
     else:
         print('Subhalo: {},'.format(index),'Bulge sigma: {},'.format(Sigma_bulge),'Total sigma: {},'.format(Sigma_total),
-              'BH mass: {},'.format(np.max(np.max(BHMasses_subhalo)*1e10*h)),
+              'BH mass: {},'.format(np.max(np.max(BHMasses_subhalo)*1e10/h)),
               'Ratio max/min: {},'.format((np.max(ratio[~np.isnan(ratio)]),np.min(ratio[~np.isnan(ratio)])) ) , flush=True)
     
     Ratios.append(ratio)
@@ -171,8 +172,8 @@ for index in SubhaloIndicesWithBH:
     Disk_sigmas.append(Sigma_disk)
     Total_sigmas.append(Sigma_total)
     HMR_sigmas.append(Sigma_HMR)
-    BH_Masses.append(np.max(BHMasses_subhalo)*1e10*h)
-    Star_Masses.append(np.sum(mstar_subhalo)*1e10*h)
+    BH_Masses.append(np.max(BHMasses_subhalo)*1e10/h)
+    Star_Masses.append(np.sum(mstar_subhalo)*1e10/h)
     Coords.append(Coordinates)
     Subhalo_vels.append(Velocities)
     StellarHMRs.append(Stellar_HMR)

@@ -18,15 +18,17 @@ sys.stderr = sys.__stderr__
 TNGpath='/standard/torrey-group/IllustrisTNG/Runs/L75n1820TNG'
 Illustrispath='/standard/torrey-group/Illustris/Runs/L75n1820FP'
 
-basePath = TNGpath
-snap_num=99 # 135 for z=0 and 49 for z=5 in Illustris, 99 for z=0 and 17 for z=5 in TNG
+basePath = Illustrispath
+snap_num=49 # 135 for z=0 and 49 for z=5 in Illustris, 99 for z=0 and 17 for z=5 in TNG
 hdr  = il.groupcat.loadHeader(basePath, snap_num)
 box_size = hdr["BoxSize"]
 redshift = hdr['Redshift']
 
 if basePath==TNGpath:
+    sim = 'TNG'
     h = hdr['HubbleParam']
-else:
+elif basePath==Illustrispath:
+    sim = 'Ill'
     h = 0.704 # Hubble param for Illustris, not in header for some reason
 
 print("Making subhalo mask ...", flush=True)
@@ -122,7 +124,7 @@ for i in range(len(Desired_subhalos)):
     
         Sigmas.append(Sigma_bulge)
         BH_Masses.append(np.max(Subhalo_BH_Masses)*1e10*h) # Add most massive BH mass in subhalo to list
-        Star_Masses.append(np.sum(Star_Mass)*1e10*h)
+        Star_Masses.append(np.sum(Star_Mass))
         Subhalo_vels.append(Velocities)
         
         if index in Central_subhalos:
@@ -145,6 +147,6 @@ print("Failure rate: {}".format(failure_rate),flush=True)
 print(f"Nan values: {skipped_subhalos}",flush=True)
 print(f"(Potentially) Missing files: {halosskipped}",flush=True)
 
-Write2File(Sigmas,BH_Masses,Star_Masses,Central_ids,Subhalo_vels,fname='Brahma_Data/Kin_Decomp_TNG_z0')
+Write2File(Sigmas,BH_Masses,Star_Masses,Central_ids,Subhalo_vels,fname=f'Brahma_Data/Kin_Decomp_{sim}_z{int(redshift)}')
 
 

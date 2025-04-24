@@ -14,12 +14,13 @@ from scipy.interpolate import interp1d
 from scipy.optimize import brentq
 from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
+from scipy import stats
 
 
-def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
+def median_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
     '''
-    mean_trends is a function designed to take the above data and bin it, returning the mean 
+    median_trends is a function designed to take the above data and bin it, returning the mean 
     and standard deviation values for each bin at each redshift in each box
     
     Inputs:
@@ -32,24 +33,24 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
     
     Outputs:
     
-    AllBoxMeans: A numpy array of the mean binned y values for each redshift, for each box
-    AllBoxStdDevs: A numoy array of the std dev of y values for each redshift, for each box
+    AllBoxMedians: A numpy array of the median binned y values for each redshift, for each box
+    AllBoxIqrs: A numpy array of 1/2 of the interquartile ranges of y values for each redshift, for each box
     XPoints: Points along the x axis to plot your average y values
     '''
 
-    AllBoxMeans = []
-    AllBoxStdDevs = []
+    AllBoxMedians = []
+    AllBoxIqrs = []
     Xpoints = []
     Allids = []
 
     # I have no idea why this is necessary, but when I don't include this the loop breaks because of the num argument
     numbins=bins
 
-    # Want to find mean and std dev for each simulation
+    # Want to find mean and iqr for each simulation
     for i in range(len(Prop1list)):
 
-        BoxMeans = []
-        BoxStdDevs = []
+        BoxMedians = []
+        BoxIqrs = []
         Box_ids = [] 
         
         # low = math.floor(limits[0])
@@ -66,14 +67,14 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
         # For each redshift
         for ii in range(len(redshifts)):
 
-            ZMeans = []
-            ZStdDevs = []
-            Z_ids = []
+            zMedians = []
+            zIqrs = []
+            z_ids = []
 
             # For each bin we make
             for iii in range(len(bins)-1):
 
-                # Store the ids of the Property1 to calculate the mean and std.dev of Property2
+                # Store the ids of the Property1 to calculate the median and iqr of Property2
                 ids = np.where(np.logical_and(np.log10(Prop1list[i][ii])>=bins[iii],
                                           np.log10(Prop1list[i][ii])<=bins[iii+1]))[0]
                 
@@ -82,55 +83,52 @@ def mean_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
                 # If we have at least 5 points in the bin
                 if len(Vals) > 5:
 
-                    ZMeans.append(np.mean(np.log10(Vals)))
-                    ZStdDevs.append(np.std(np.log10(Vals)))
-                    Z_ids.append(ids)
+                    zMedians.append(np.median(np.log10(Vals)))
+                    zIqrs.append(stats.iqr(np.log10(Vals))/2) # 1/2 of iqr for ease of plotting
+                    z_ids.append(ids)
 
                 # Otherwise, skip this bin
                 else: 
                     
-                    ZMeans.append(np.nan)
-                    ZStdDevs.append(np.nan)
-                    Z_ids.append(ids)
+                    zMedians.append(np.nan)
+                    zIqrs.append(np.nan)
+                    z_ids.append(ids)
                     
-            BoxMeans.append(ZMeans)
-            BoxStdDevs.append(ZStdDevs)
-            Box_ids.append(Z_ids)
+            BoxMedians.append(zMedians)
+            BoxIqrs.append(zIqrs)
+            Box_ids.append(z_ids)
 
-        AllBoxMeans.append(BoxMeans)
-        AllBoxStdDevs.append(BoxStdDevs)
+        AllBoxMedians.append(BoxMedians)
+        AllBoxIqrs.append(BoxIqrs)
         Allids.append(Box_ids)
 
-    AllBoxMeans = np.array(AllBoxMeans)
-    AllBoxStdDevs = np.array(AllBoxStdDevs)
+    AllBoxMedians = np.array(AllBoxMedians)
+    AllBoxIqrs = np.array(AllBoxIqrs)
 
-    return(AllBoxMeans,AllBoxStdDevs,Xpoints)
+    return(AllBoxMedians,AllBoxIqrs,Xpoints)
 
 
-def mean_trends_adj(Prop1list,Prop2list,redshifts,limits,bins:int):
+def median_trends_adj(Prop1list,Prop2list,redshifts,limits,bins:int):
 
     '''
-    Adjusted version of mean_trends to produce bins for each redshift in a box as opposed
+    Adjusted version of median_trends to produce bins for each redshift in a box as opposed
     to for each box at a given redshift
     '''
     
-    AllBoxMeans = []
-    AllBoxStdDevs = []
+    AllBoxMedians = []
+    AllBoxIqrs = []
     Xpoints = []
     Allids = []
 
     # I have no idea why this is necessary, but when I don't include this the loop breaks because of the num argument
     numbins=bins
 
-    # Want to find mean and std dev for each box
+    # Want to find median and iqr for each box
     for i in range(len(Prop1list)):
 
-        BoxMeans = []
-        BoxStdDevs = []
+        BoxMedians = []
+        BoxIqrs = []
         Box_ids = []
-        
-        # low = math.floor(limits[0])
-        # high = math.ceil(limits[1])
         
         low = limits[0]
         high = limits[1]
@@ -145,14 +143,14 @@ def mean_trends_adj(Prop1list,Prop2list,redshifts,limits,bins:int):
             # Add the bin average to serve as x values when plotting; same for all z's
             Xpoints.append(np.array([np.mean([bins[n],bins[n+1]]) for n in range(0,len(bins)-1)]))
 
-            ZMeans = []
-            ZStdDevs = []
-            Z_ids = []
+            zMedians = []
+            zIqrs = []
+            z_ids = []
 
             # For each bin we make
             for iii in range(len(bins)-1):
 
-                # Store the ids of the Property1 to calculate the mean and std.dev of Property2
+                # Store the ids of the Property1 to calculate the median and iqr of Property2
                 ids = np.where(np.logical_and(np.log10(Prop1list[i][ii])>=bins[iii],
                                           np.log10(Prop1list[i][ii])<=bins[iii+1]))[0]
                 
@@ -160,33 +158,32 @@ def mean_trends_adj(Prop1list,Prop2list,redshifts,limits,bins:int):
                 
                 if len(Vals) > 5:
                     
-                    ZMeans.append(np.mean(np.log10(Vals)))
-                    ZStdDevs.append(np.std(np.log10(Vals)))
-                    Z_ids.append(ids)
+                    zMedians.append(np.median(np.log10(Vals)))
+                    zIqrs.append(stats.iqr(np.log10(Vals))/2) # 1/2 iqr for ease of plotting
+                    z_ids.append(ids)
                 
                 else: 
                     
-                    ZMeans.append(np.nan)
-                    ZStdDevs.append(np.nan)
-                    Z_ids.append(ids)
+                    zMedians.append(np.nan)
+                    zIqrs.append(np.nan)
+                    z_ids.append(ids)
 
-            BoxMeans.append(ZMeans)
-            BoxStdDevs.append(ZStdDevs)
-            Box_ids.append(Z_ids)
+            BoxMedians.append(zMedians)
+            BoxIqrs.append(zIqrs)
+            Box_ids.append(z_ids)
 
-        AllBoxMeans.append(BoxMeans)
-        AllBoxStdDevs.append(BoxStdDevs)
+        AllBoxMedians.append(BoxMedians)
+        AllBoxIqrs.append(BoxIqrs)
         Allids.append(Box_ids)
 
-    AllBoxMeans = np.array(AllBoxMeans)
-    AllBoxStdDevs = np.array(AllBoxStdDevs)
+    AllBoxMedians = np.array(AllBoxMedians)
+    AllBoxIqrs = np.array(AllBoxIqrs)
 
-    return(AllBoxMeans,AllBoxStdDevs,Xpoints)
+    return(AllBoxMedians,AllBoxIqrs,Xpoints)
 
 
 def get_particle_property_within_postprocessed_groups_adj(output_path,particle_property,p_type,desired_redshift,subhalo_index,requested_property,group_type='groups',list_all=True,store_all_offsets=1, public_simulation=0,file_format='fof_subfind'):
 
-    
     '''
     This function was directly adapted from Aklant Bohmwick's get_particle_property_within_postprocessed_groups function from his version of arepo_package. This adapted version takes requested_property as an input so as to avoid loading in all the data every time the property of some halo is desired. 
     '''
@@ -215,18 +212,20 @@ def get_particle_property_within_postprocessed_groups_adj(output_path,particle_p
 
     elif (group_type=='subhalo'):              
         if(public_simulation==0):
+            # print('Getting group length ...',flush=True)
             group_lengths,output_redshift=(arepo_package.get_group_property(output_path,'GroupLenType', desired_redshift,postprocessed=1))
             group_lengths=group_lengths[:,p_type] 
             if (store_all_offsets==0):
-                    group_offsets=np.array([sum(group_lengths[0:i]) for i in range(0,subhalo_index+1)]) 
+                    group_offsets=np.array([np.sum(group_lengths[0:i]) for i in range(0,subhalo_index+1)]) 
             else:
                 if (os.path.exists(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot))):
                     group_offsets=np.load(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot),allow_pickle = True)
-                    # print("offsets were already there")
+                    # print("offsets were already there",flush=True)
                 else:
-                    group_offsets=np.array([sum(group_lengths[0:i]) for i in range(0,len(group_lengths))])
+                    # print(f'Storing offsets, looping through {len(group_lengths)} groups ...',flush=True)
+                    # group_offsets=np.array([np.sum(group_lengths[0:i]) for i in range(0,len(group_lengths))]) # Previously used
+                    group_offsets=np.cumsum(group_lengths) - group_lengths # Faster version
                     np.save(output_path+'/offsets_%d_snap%d_postprocessed.npy'%(p_type,output_snapshot),group_offsets)
-                    print("Storing the offsets")        
             subhalo_lengths,output_redshift=(arepo_package.get_subhalo_property(output_path,'SubhaloLenType', desired_redshift, postprocessed=1))
             subhalo_lengths=subhalo_lengths[:,p_type] 
             subhalo_indices=np.arange(0,len(subhalo_lengths))
@@ -309,9 +308,7 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
     fixed_x is a function that takes the traditional scaling relations (like M_BH-sigma) and provides
     y (M_BH) axis averages and std devs. vs. redshift for fixed values of the x axis (sigma).
     
-    
     Inputs:
-    
     X_vals: List of values typically on the x axis (like sigma) for each redshift desired
             Format: [X_vals_z0, X_vals_z1, ... ]
     Y_vals: List of values typically on the y axis (like M_BH) for each redshift desired
@@ -320,41 +317,45 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
     bin_width: Width of bins around fixed_vals to draw from X_vals
     
     Outputs:
-    
-    avgs: List of averages of X_vals at fixed_vals values
-    stds: List of standard deviations around avgs
+    meds: List of medians of X_vals at fixed_vals values
+    iqrs: List of 1/2 of interquartile range around median values
     
     '''
     
     # Avgs and std devs for all fixed x values 
-    avgs = []
-    stds = []
+    meds = []
+    iqrs = []
     
     # For each fixed value we are interested in
     for i in range(len(fixed_vals)):
         
         # Avgs and std devs for the current fixed x value 
-        sigma_avgs = []
-        sigma_stds = []
+        sigma_meds = []
+        sigma_iqrs = []
         
         # For each redshift in X_vals
         for ii in range(len(X_vals)):
 
             # Fetch indices of values within +/- bin_with of fixed_vals
             index = np.logical_and(X_vals[ii] > fixed_vals[i]-bin_width, X_vals[ii] < fixed_vals[i]+bin_width)
-            
+
+            if (len(Y_vals[ii][index]) < 5): # At least 5 points/bin
+                sigma_meds.append(np.nan)
+                sigma_iqrs.append(np.nan)
+                continue
+                
             # Calculate avg and std dev for y_vals at (redshift) index ii for the current fixed_val
-            avg = np.mean(np.array(Y_vals[ii])[index])
-            std = np.std(np.array(Y_vals[ii])[index])
+            med = np.median(np.array(Y_vals[ii])[index])
+            iqr = stats.iqr(np.array(Y_vals[ii])[index])
                         
             # Append to lists
-            sigma_avgs.append(avg)
-            sigma_stds.append(std)
+            sigma_meds.append(med)
+            sigma_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
         
-        avgs.append(sigma_avgs)
-        stds.append(sigma_stds)
+        meds.append(np.array(sigma_meds))
+        iqrs.append(np.array(sigma_iqrs))
         
-    return(avgs,stds)
+    return(meds,iqrs)
 
 
 
@@ -673,7 +674,7 @@ def kinematic_decomp_e(Coordinates,Velocities,Potentials,nstars=150,nstars_min=1
 def cal_avg(xvals,yvals,bins):
     
     '''
-    cal_avg is like mean_trends, but simplified for only one set of x and y values
+    cal_avg is like median_trends, but simplified for only one set of x and y values
     
     xvals and yvals in normal values, bins in log10
     '''
