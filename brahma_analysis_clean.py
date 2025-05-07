@@ -41,7 +41,6 @@ def median_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
     AllBoxMedians = []
     AllBoxIqrs = []
     Xpoints = []
-    Allids = []
 
     # I have no idea why this is necessary, but when I don't include this the loop breaks because of the num argument
     numbins=bins
@@ -51,13 +50,10 @@ def median_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
         BoxMedians = []
         BoxIqrs = []
-        Box_ids = [] 
-        
-        # low = math.floor(limits[0])
-        # high = math.ceil(limits[1])
-        
+                
         low = limits[0]
         high = limits[1]
+        
         # Add a manual shift of i in log scale to the bins to prevent overlap
         bins = np.log10(np.logspace(low,high,num=numbins))+i*0.025
         
@@ -69,7 +65,6 @@ def median_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
             zMedians = []
             zIqrs = []
-            z_ids = []
 
             # For each bin we make
             for iii in range(len(bins)-1):
@@ -85,22 +80,18 @@ def median_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
                     zMedians.append(np.median(np.log10(Vals)))
                     zIqrs.append(stats.iqr(np.log10(Vals))/2) # 1/2 of iqr for ease of plotting
-                    z_ids.append(ids)
 
                 # Otherwise, skip this bin
                 else: 
                     
                     zMedians.append(np.nan)
                     zIqrs.append(np.nan)
-                    z_ids.append(ids)
                     
             BoxMedians.append(zMedians)
             BoxIqrs.append(zIqrs)
-            Box_ids.append(z_ids)
 
         AllBoxMedians.append(BoxMedians)
         AllBoxIqrs.append(BoxIqrs)
-        Allids.append(Box_ids)
 
     AllBoxMedians = np.array(AllBoxMedians)
     AllBoxIqrs = np.array(AllBoxIqrs)
@@ -359,7 +350,7 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
 
 
 
-def precent_growth(array,array_index,redshift_indices):
+def precent_growth(array,array_index,redshift_indices,log=True):
 
     '''
     Simple function to calculate the percent growth of a value across
@@ -377,8 +368,11 @@ def precent_growth(array,array_index,redshift_indices):
     
     highzval = array[array_index][redshift_indices[0]]
     lowzval = array[array_index][redshift_indices[1]]
-    
-    perc_growth = (lowzval - highzval)/highzval
+
+    if log:
+        perc_growth = (10**lowzval - 10**highzval)/10**highzval
+    else:
+        perc_growth = (lowzval - highzval)/highzval
     
     vals = [highzval,lowzval]
     
