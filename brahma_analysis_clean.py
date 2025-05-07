@@ -16,12 +16,11 @@ from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
 from scipy import stats
 
-
 def median_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
     '''
-    median_trends is a function designed to take the above data and bin it, returning the mean 
-    and standard deviation values for each bin at each redshift in each box
+    median_trends is a function designed to take the above data and bin it, returning the median 
+    and interquartile range for each bin at each redshift in each box
     
     Inputs:
     
@@ -316,13 +315,18 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
     # Avgs and std devs for all fixed x values 
     meds = []
     iqrs = []
+    c_ints = []
+
+    def iqr_statistic(data):
+        return np.percentile(data, 75) - np.percentile(data, 25)
     
     # For each fixed value we are interested in
     for i in range(len(fixed_vals)):
         
         # Avgs and std devs for the current fixed x value 
-        sigma_meds = []
-        sigma_iqrs = []
+        x_meds = []
+        x_iqrs = []
+        x_c_ints = []
         
         # For each redshift in X_vals
         for ii in range(len(X_vals)):
@@ -331,22 +335,41 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
             index = np.logical_and(X_vals[ii] > fixed_vals[i]-bin_width, X_vals[ii] < fixed_vals[i]+bin_width)
 
             if (len(Y_vals[ii][index]) < 5): # At least 5 points/bin
-                sigma_meds.append(np.nan)
-                sigma_iqrs.append(np.nan)
+                x_meds.append(np.nan)
+                x_iqrs.append(np.nan)
+                x_c_ints.append((np.nan,np.nan))
                 continue
-                
+
+            data = np.array(Y_vals[ii])[index]
+            
             # Calculate avg and std dev for y_vals at (redshift) index ii for the current fixed_val
-            med = np.median(np.array(Y_vals[ii])[index])
-            iqr = stats.iqr(np.array(Y_vals[ii])[index])
+            med = np.median(data)
+            iqr = stats.iqr(data)
+
+            # Bootstrapping IQRs to estimate variance due to low statistics
+            res = stats.bootstrap(
+                (data,), 
+                statistic=stats.iqr,     
+                confidence_level=0.95, 
+                n_resamples=10000,
+                method='percentile',
+                vectorized=True,
+                random_state=42 # For reproducibility
+            )
+
+            # Adjusted to tell plt.errorbar where to place errors
+            c_int = (iqr-res.confidence_interval.low,res.confidence_interval.high-iqr)
                         
             # Append to lists
-            sigma_meds.append(med)
-            sigma_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
+            x_meds.append(med)
+            x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
+            x_c_ints.append(c_int)
         
-        meds.append(np.array(sigma_meds))
-        iqrs.append(np.array(sigma_iqrs))
+        meds.append(np.array(x_meds))
+        iqrs.append(np.array(x_iqrs))
+        c_ints.append(x_c_ints)
         
-    return(meds,iqrs)
+    return(meds,iqrs,c_ints)
 
 
 
