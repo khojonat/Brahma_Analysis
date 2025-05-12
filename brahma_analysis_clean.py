@@ -292,7 +292,7 @@ def ReadBrahmaData(fname='BrahmaData'):
 
 
 
-def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
+def fixed_x(X_vals,Y_vals,fixed_vals,bin_width,add_param = 0,add_param_vals = 0,add_param_bin_width=0,bootstrap=True):
 
     '''
     fixed_x is a function that takes the traditional scaling relations (like M_BH-sigma) and provides
@@ -304,21 +304,26 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
     Y_vals: List of values typically on the y axis (like M_BH) for each redshift desired
             Format: [Y_vals_z0, Y_vals_z1, ... ]
     fixed_vals: List of values of X_vals that you want to keep constant
-    bin_width: Width of bins around fixed_vals to draw from X_vals
+            Format: [xval1,xval2,...]
+    bin_width: Width of bins around fixed_vals to draw from X_vals in dex
+    add_param: (Optional) parameter to mask y data with in addition to the fixed x_val
+            Format: [Add_param_z0, Add_param_z1, ...]
+    add_param_vals: Values of add_param to select for each fixed x_val at each redshift
+            Format: [[add_param_xval1_z0,add_param_xval1_z1,...],
+                     [add_param_xval2_z0,add_param_xval2_z1,...],...]   
+    add_param_bin_width: Width of bins around add_param_vals to draw from add_param in dex
+    bootstrap: Whether or not to perform bootstrapping of the interquartile range
     
     Outputs:
     meds: List of medians of X_vals at fixed_vals values
     iqrs: List of 1/2 of interquartile range around median values
-    
+    c_ints: Bootstrapped confidence interval of the IQR
     '''
     
     # Avgs and std devs for all fixed x values 
     meds = []
     iqrs = []
     c_ints = []
-
-    def iqr_statistic(data):
-        return np.percentile(data, 75) - np.percentile(data, 25)
     
     # For each fixed value we are interested in
     for i in range(len(fixed_vals)):
@@ -335,38 +340,97 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width):
             index = np.logical_and(X_vals[ii] > fixed_vals[i]-bin_width, X_vals[ii] < fixed_vals[i]+bin_width)
 
             if (len(Y_vals[ii][index]) < 5): # At least 5 points/bin
-                x_meds.append(np.nan)
+                if (add_param!=0) & (ii!=0) & (ii!=len(X_vals)-1):
+                    x_meds.append([np.nan,np.nan])
+                else:
+                    x_meds.append(np.nan)
                 x_iqrs.append(np.nan)
                 x_c_ints.append((np.nan,np.nan))
                 continue
 
-            data = np.array(Y_vals[ii])[index]
-            
-            # Calculate avg and std dev for y_vals at (redshift) index ii for the current fixed_val
-            med = np.median(data)
-            iqr = stats.iqr(data)
+            if add_param != 0: # If there is an additional parameter to mask y data by
 
-            # Bootstrapping IQRs to estimate variance due to low statistics
-            res = stats.bootstrap(
-                (data,), 
-                statistic=stats.iqr,     
-                confidence_level=0.95, 
-                n_resamples=10000,
-                method='percentile',
-                vectorized=True,
-                random_state=42 # For reproducibility
-            )
+                if (ii == 0): # If this is the first redshift, calculate median yval for median add_param_vals at xval at z+1, to be diff'd with z+2
+                    add_mask = np.logical_and(add_param[ii] > add_param_vals[i][ii+1]-add_param_bin_width, 
+                                              add_param[ii] < add_param_vals[i][ii+1]+add_param_bin_width)
+                    index = np.logical_and(index,add_mask)
+    
+                    data = np.array(Y_vals[ii])[index]
+    
+                    med = np.median(data)
+                    iqr = stats.iqr(data)
+                    
+                    x_meds.append(med)
+                    x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
 
-            # Adjusted to tell plt.errorbar where to place errors
-            c_int = (iqr-res.confidence_interval.low,res.confidence_interval.high-iqr)
+                elif (ii == len(X_vals)-1): # If this is the last redshift, calculate median yval at median add_param_vals of z-1, diff'd with z-2 
+                    add_mask = np.logical_and(add_param[ii] > add_param_vals[i][ii-1]-add_param_bin_width, 
+                                              add_param[ii] < add_param_vals[i][ii-1]+add_param_bin_width)
+                    index = np.logical_and(index,add_mask)
+    
+                    data = np.array(Y_vals[ii])[index]
+    
+                    med = np.median(data)
+                    iqr = stats.iqr(data)
+                    
+                    x_meds.append(med)
+                    x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
+                    
+                else: # Otherwise, do both z-1 and z+1
+
+                    avg_param_val1 = add_param_vals[i][ii-1]
+                    avg_param_val2 = add_param_vals[i][ii+1]
+                
+                    add_mask1 = np.logical_and(add_param[ii] > avg_param_val1-add_param_bin_width, 
+                                               add_param[ii] < avg_param_val1+add_param_bin_width)
+                    add_mask2 = np.logical_and(add_param[ii] > avg_param_val2-add_param_bin_width, 
+                                              add_param[ii] < avg_param_val2+add_param_bin_width)
+                    index1 = np.logical_and(index,add_mask1)
+                    index2 = np.logical_and(index,add_mask2)
+    
+                    data1 = np.array(Y_vals[ii])[index1]
+                    data2 = np.array(Y_vals[ii])[index2]
+
+                    med1 = np.median(data1)
+                    med2 = np.median(data2)
+                    
+                    med = [med1,med2]
+                    iqr = np.array([stats.iqr(data1),stats.iqr(data2)])
+                    
+                    x_meds.append(med)
+                    x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
+                
+            else:
+                data = np.array(Y_vals[ii])[index]
+                
+                # Calculate avg and std dev for y_vals at (redshift) index ii for the current fixed_val
+                med = np.median(data)
+                iqr = stats.iqr(data)
+
+                x_meds.append(med)
+                x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
+
+            if bootstrap:
+                # Bootstrapping IQRs to estimate variance due to low statistics
+                res = stats.bootstrap(
+                    (data,), 
+                    statistic=stats.iqr,     
+                    confidence_level=0.95, 
+                    n_resamples=10000,
+                    method='percentile',
+                    vectorized=True,
+                    random_state=42 # For reproducibility
+                )
+    
+                # Adjusted to tell plt.errorbar where to place errors
+                c_int = (iqr-res.confidence_interval.low,res.confidence_interval.high-iqr)
+            else:
+                c_int = np.nan
                         
-            # Append to lists
-            x_meds.append(med)
-            x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
             x_c_ints.append(c_int)
         
-        meds.append(np.array(x_meds))
-        iqrs.append(np.array(x_iqrs))
+        meds.append(x_meds)
+        iqrs.append(x_iqrs)
         c_ints.append(x_c_ints)
         
     return(meds,iqrs,c_ints)
