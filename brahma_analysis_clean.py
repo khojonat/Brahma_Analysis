@@ -15,6 +15,7 @@ from scipy.optimize import brentq
 from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
 from scipy import stats
+from sklearn.linear_model import LinearRegression
 
 def median_trends(Prop1list,Prop2list,redshifts,limits,bins:int):
 
@@ -337,7 +338,7 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width,add_param = 0,add_param_vals = 0,
         for ii in range(len(X_vals)):
 
             # Fetch indices of values within +/- bin_with of fixed_vals
-            index = np.logical_and(X_vals[ii] > fixed_vals[i]-bin_width, X_vals[ii] < fixed_vals[i]+bin_width)
+            index = np.logical_and(np.array(X_vals[ii]) > fixed_vals[i]-bin_width, np.array(X_vals[ii]) < fixed_vals[i]+bin_width)
 
             if (len(Y_vals[ii][index]) < 5): # At least 5 points/bin
                 if (add_param!=0) & (ii!=0) & (ii!=len(X_vals)-1):
@@ -907,3 +908,102 @@ def remove_linear_gradient(Coordinates,Potentials):
     corrected_potential = Potentials - fit_potential + params[2]
     
     return(corrected_potential)
+    
+
+def calc_slope(xdata,ydata):
+    '''
+    Simple function for use in bootstrapping
+    '''
+    
+    model = LinearRegression()
+    no_nans = (~np.isnan(ydata))
+    if len(ydata[no_nans]) == 0:
+        return(np.nan)
+    model.fit(xdata.reshape(-1,1)[no_nans], ydata[no_nans])
+    
+    return(model.coef_[0])
+
+
+
+def calc_LHS(BH_masses,sigmas,const_sigmas,bin_width):
+    '''
+    Calculating LHS of the m-sigma redshift evolution equation
+
+    All inputs are expected to be in log10 for one box
+    '''
+
+    meds,iqrs,c_ints = fixed_x(sigmas,BH_masses,const_sigmas,bin_width,bootstrap=False)
+
+    dmbh_dz_box = []
+
+    for i in range(len(const_sigmas)):
+        
+        dmbh_dz_sigma_box = []
+        
+        for ii in range(1,7):
+            
+            dmbh_dz_sigma_z = (meds[i][ii-1] - meds[i][ii+1])/2
+            dmbh_dz_sigma_box.append(dmbh_dz_sigma_z)
+            
+        dmbh_dz_box.append(dmbh_dz_sigma_box)
+            
+    return np.array(dmbh_dz_box)
+
+    
+def calc_RHS(BH_masses,sigmas,mstars,const_sigmas,bin_width,mstar_bin_width = 0.2,comp=0):
+    '''
+    Calculating RHS of the m-sigma redshift evolution equation
+
+    All inputs are expected to be in log10 for one box
+    
+    component changes which component of the RHS to return. Default 0 returns combination of all 3
+    '''
+
+    meds,iqrs,c_ints = fixed_x(sigmas,mstars,const_sigmas,bin_width,bootstrap=False)
+
+    mstarsigma_meds,mstarsigma_iqrs,mstarsigma_cints = fixed_x(sigmas,mstars,const_sigmas,bin_width)
+    msigma_mstar_meds,msigma_mstar_iqrs,msigma_mstar_cints = fixed_x(sigmas, BH_masses, const_sigmas, bin_width,
+                                                                     mstars, mstarsigma_meds, mstar_bin_width, bootstrap=False)
+
+    dmstar_dz_box = []
+    dmdz_mstar_box = []
+    mmstar_slope_box = []
+
+    for i in range(len(const_sigmas)):
+        
+        dmstar_dz_sigma_box = []
+        dmdz_mstar_sigma_box = []
+        mmstar_slope_sigma_box = []
+        msigma_mstar_med = msigma_mstar_meds[i]
+        
+        for ii in range(1,7):
+            
+            dmstar_dz_sigma_z = (meds[i][ii-1] - meds[i][ii+1])/2
+
+            if ii==1:
+                dmdz_mstar_z = (msigma_mstar_med[ii-1] - msigma_mstar_med[ii+1][0])/2
+            elif ii==6:
+                dmdz_mstar_z = (msigma_mstar_med[ii-1][1] - msigma_mstar_med[ii+1])/2
+            else:
+                dmdz_mstar_z = (msigma_mstar_med[ii-1][1] - msigma_mstar_med[ii+1][0])/2 
+
+            mmstar_slope = calc_slope(mstars[ii],BH_masses[ii])
+            
+            dmstar_dz_sigma_box.append(dmstar_dz_sigma_z)
+            dmdz_mstar_sigma_box.append(dmdz_mstar_z)
+            mmstar_slope_sigma_box.append(mmstar_slope)
+            
+        dmstar_dz_box.append(dmstar_dz_sigma_box)
+        dmdz_mstar_box.append(dmdz_mstar_sigma_box)
+        mmstar_slope_box.append(mmstar_slope_sigma_box)
+
+    RHS = np.array(mmstar_slope_box) * np.array(dmstar_dz_box) + np.array(dmdz_mstar_box)
+
+    if comp == 3: 
+        return np.array(dmdz_mstar_box)
+    elif comp == 2:
+        return np.array(dmstar_dz_box)
+    elif comp == 1:
+        return np.array(mmstar_slope_box)
+    else:
+        return RHS
