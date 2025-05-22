@@ -9,10 +9,13 @@ import numpy as np
 from brahma_analysis_clean import *
 from sklearn.linear_model import LinearRegression
 
+np.seterr(all="ignore") # Lots of 'RuntimeWarning: Mean of empty slice.' warnings due to NaN's I think...
+
 h = 0.6774
 
 path = '/home/yja6qa/arepo_package/Brahma_Data/'
 # Loading in Brahma data
+print('Loading Brahma data ...',flush=True)
 
 bFOF_decomp_z0 = ReadBrahmaData(path+'bFOF_z0_decomp')
 bFOF_decomp_z1 = ReadBrahmaData(path+'bFOF_z1_decomp')
@@ -51,6 +54,7 @@ rich_decomp_z6 = ReadBrahmaData(path+'bFOF_LW10_spin_rich_z6_decomp')
 rich_decomp_z7 = ReadBrahmaData(path+'bFOF_LW10_spin_rich_z7_decomp')
 
 # Storing the BH masses
+print('Storing Brahma BH masses, stellar masses, and sigmas ...',flush=True)
 MBH_decomp_bFOFz0 = np.array(bFOF_decomp_z0[5])
 MBH_decomp_bFOFz1 = np.array(bFOF_decomp_z1[5])
 MBH_decomp_bFOFz2 = np.array(bFOF_decomp_z2[5])
@@ -222,7 +226,11 @@ LHS = []
 RHS = []
 RHS_comp3 = []
 
+print('Looping through bootstrapping ...',flush=True)
+
 for n in range(len(BH_masses)):
+
+    print('Starting new box!',flush=True)
 
     n_samples = [len(BH_masses[n][i]) for i in range(len(BH_masses[n]))]
     
@@ -232,11 +240,19 @@ for n in range(len(BH_masses)):
     RHS_comp3_box = []
     
     for _ in range(n_resamples):
-        
+
+        if _ == int(n_resamples/4): 
+            print('1/4 of the way through this box ...',flush=True)
+        elif _ == int(n_resamples/2): 
+            print('1/2 of the way through this box ...',flush=True)
+        elif _ == int(3*n_resamples/4): 
+            print('3/4 of the way through this box ...',flush=True)
+
         resample_indices = [rng.integers(n, n_samples[i], n_samples[i]) for i in range(len(n_samples))]
         resample_masses = [BH_masses[n][i][resample_indices[i]] for i in range(len(resample_indices))]
         resample_sigmas = [sigmas[n][i][resample_indices[i]] for i in range(len(resample_indices))]
         resample_mstars = [mstars[n][i][resample_indices[i]] for i in range(len(resample_indices))]
+
         
         dmdz = calc_LHS(resample_masses,resample_sigmas,const_sigmas,bin_width)
         RHS_resampled = calc_RHS(resample_masses,resample_sigmas,resample_mstars,const_sigmas,bin_width)
@@ -256,6 +272,8 @@ RHS_comp3 = np.array(RHS_comp3)
 
 
 # Compute confidence interval
+print('Now computing confidence intervals ...',flush=True)
+
 alpha = 0.05
 lowers_LHS = []
 uppers_LHS = []

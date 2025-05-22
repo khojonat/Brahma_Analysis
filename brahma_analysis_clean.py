@@ -340,7 +340,7 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width,add_param = 0,add_param_vals = 0,
             # Fetch indices of values within +/- bin_with of fixed_vals
             index = np.logical_and(np.array(X_vals[ii]) > fixed_vals[i]-bin_width, np.array(X_vals[ii]) < fixed_vals[i]+bin_width)
 
-            if (len(Y_vals[ii][index]) < 5): # At least 5 points/bin
+            if (len(Y_vals[ii][index]) < 5) & (add_param == 0): # At least 5 points/bin
                 if (add_param!=0) & (ii!=0) & (ii!=len(X_vals)-1):
                     x_meds.append([np.nan,np.nan])
                 else:
@@ -348,6 +348,16 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width,add_param = 0,add_param_vals = 0,
                 x_iqrs.append(np.nan)
                 x_c_ints.append((np.nan,np.nan))
                 continue
+                
+            elif (len(Y_vals[ii][index]) >= 5) & (add_param == 0):
+                data = np.array(Y_vals[ii])[index]
+                
+                # Calculate avg and std dev for y_vals at (redshift) index ii for the current fixed_val
+                med = np.median(data)
+                iqr = stats.iqr(data)
+
+                x_meds.append(med)
+                x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
 
             if add_param != 0: # If there is an additional parameter to mask y data by
 
@@ -357,10 +367,14 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width,add_param = 0,add_param_vals = 0,
                     index = np.logical_and(index,add_mask)
     
                     data = np.array(Y_vals[ii])[index]
-    
-                    med = np.median(data)
-                    iqr = stats.iqr(data)
-                    
+
+                    if len(data) == 0:
+                        med = np.nan
+                        iqr = np.nan
+                    else:
+                        med = np.median(data)
+                        iqr = stats.iqr(data)
+                                        
                     x_meds.append(med)
                     x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
 
@@ -371,8 +385,12 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width,add_param = 0,add_param_vals = 0,
     
                     data = np.array(Y_vals[ii])[index]
     
-                    med = np.median(data)
-                    iqr = stats.iqr(data)
+                    if len(data) == 0:
+                        med = np.nan
+                        iqr = np.nan
+                    else:
+                        med = np.median(data)
+                        iqr = stats.iqr(data)
                     
                     x_meds.append(med)
                     x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
@@ -392,24 +410,26 @@ def fixed_x(X_vals,Y_vals,fixed_vals,bin_width,add_param = 0,add_param_vals = 0,
                     data1 = np.array(Y_vals[ii])[index1]
                     data2 = np.array(Y_vals[ii])[index2]
 
-                    med1 = np.median(data1)
-                    med2 = np.median(data2)
+                    if len(data1) == 0:
+                        med1 = np.nan
+                        iqr1 = np.nan
+                    else:
+                        med1 = np.median(data1)
+                        iqr1 = stats.iqr(data1)
+                        
+                    if len(data2) == 0:
+                        med2 = np.nan
+                        iqr2 = np.nan
+                    else:
+                        med2 = np.median(data2)
+                        iqr2 = stats.iqr(data2)
                     
                     med = [med1,med2]
-                    iqr = np.array([stats.iqr(data1),stats.iqr(data2)])
+                    iqr = np.array([iqr1,iqr2])
                     
                     x_meds.append(med)
                     x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
-                
-            else:
-                data = np.array(Y_vals[ii])[index]
-                
-                # Calculate avg and std dev for y_vals at (redshift) index ii for the current fixed_val
-                med = np.median(data)
-                iqr = stats.iqr(data)
-
-                x_meds.append(med)
-                x_iqrs.append(iqr/2) # Returning half the iqr for ease of plotting
+                    
 
             if bootstrap:
                 # Bootstrapping IQRs to estimate variance due to low statistics
@@ -925,6 +945,7 @@ def calc_slope(xdata,ydata):
 
 
 
+
 def calc_LHS(BH_masses,sigmas,const_sigmas,bin_width):
     '''
     Calculating LHS of the m-sigma redshift evolution equation
@@ -948,7 +969,7 @@ def calc_LHS(BH_masses,sigmas,const_sigmas,bin_width):
         dmbh_dz_box.append(dmbh_dz_sigma_box)
             
     return np.array(dmbh_dz_box)
-
+    
     
 def calc_RHS(BH_masses,sigmas,mstars,const_sigmas,bin_width,mstar_bin_width = 0.2,comp=0):
     '''
@@ -958,12 +979,9 @@ def calc_RHS(BH_masses,sigmas,mstars,const_sigmas,bin_width,mstar_bin_width = 0.
     
     component changes which component of the RHS to return. Default 0 returns combination of all 3
     '''
-
-    meds,iqrs,c_ints = fixed_x(sigmas,mstars,const_sigmas,bin_width,bootstrap=False)
-
+    
     mstarsigma_meds,mstarsigma_iqrs,mstarsigma_cints = fixed_x(sigmas,mstars,const_sigmas,bin_width)
-    msigma_mstar_meds,msigma_mstar_iqrs,msigma_mstar_cints = fixed_x(sigmas, BH_masses, const_sigmas, bin_width,
-                                                                     mstars, mstarsigma_meds, mstar_bin_width, bootstrap=False)
+    msigma_mstar_meds,msigma_mstar_iqrs,msigma_mstar_cints = fixed_x(sigmas,BH_masses,const_sigmas,bin_width,mstars,mstarsigma_meds,mstar_bin_width,bootstrap=False)
 
     dmstar_dz_box = []
     dmdz_mstar_box = []
@@ -977,8 +995,8 @@ def calc_RHS(BH_masses,sigmas,mstars,const_sigmas,bin_width,mstar_bin_width = 0.
         msigma_mstar_med = msigma_mstar_meds[i]
         
         for ii in range(1,7):
-            
-            dmstar_dz_sigma_z = (meds[i][ii-1] - meds[i][ii+1])/2
+
+            dmstar_dz_sigma_z = (mstarsigma_meds[i][ii-1] - mstarsigma_meds[i][ii+1])/2
 
             if ii==1:
                 dmdz_mstar_z = (msigma_mstar_med[ii-1] - msigma_mstar_med[ii+1][0])/2
@@ -1007,3 +1025,4 @@ def calc_RHS(BH_masses,sigmas,mstars,const_sigmas,bin_width,mstar_bin_width = 0.
         return np.array(mmstar_slope_box)
     else:
         return RHS
+    
